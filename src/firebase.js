@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { doc, getDoc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { DEFAULT_TARGET, emptyBoard, newGame, passTurn, playTile } from './game';
-import { decodeRoomState, encodeRoomState, isMember, planJoin, roomFromFirestore } from './roomStorage';
+import { doc, getDoc, getFirestore, onSnapshot, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
+import { DEFAULT_TARGET, emptyBoard, newGame } from './game';
+import { encodeRoomState, isMember, planJoin, roomFromFirestore } from './roomStorage';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
 let db, auth, userPromise;
@@ -17,7 +17,9 @@ if (cloudReady) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-  ensureUser().catch(() => {}); // warm up; real actions retry and show the error
+  // Warm up while the player is still typing their name: sign in, then open the Firestore
+  // connection with a throwaway read, so the first real action does not pay for the handshake.
+  ensureUser().then(() => getDoc(doc(db, 'rooms', 'WARMUP'))).catch(() => {}); // real actions retry and show any error
 }
 const currentUid = async () => (await ensureUser()).user.uid;
 const roomRef = (code) => doc(db, 'rooms', code);
@@ -76,11 +78,9 @@ export async function startRoom(code, uid) {
     tx.set(ref, encodeRoomState({ ...newGame(room.players), updatedAt: serverTimestamp() }));
   });
 }
-export async function takeTurn(code, action, uid, tileIndex, end) {
-  await runTransaction(db, async (tx) => {
-    const ref = roomRef(code), snap = await tx.get(ref), state = decodeRoomState(snap.data());
-    if (!state) throw new Error('This room has closed.');
-    const next = action === 'pass' ? passTurn(state, uid) : playTile(state, uid, tileIndex, end);
-    tx.set(ref, encodeRoomState({ ...next, updatedAt: serverTimestamp() }));
-  });
+// A move is already worked out on screen, so it goes to Firestore as a single write (one round
+// trip) instead of a read-then-write transaction (two). Only the player whose turn it is writes.
+export async function submitState(code, state) {
+  const { code: _code, local: _local, updatedAt: _updatedAt, ...data } = state;
+  await setDoc(roomRef(code), encodeRoomState({ ...data, updatedAt: serverTimestamp() }));
 }

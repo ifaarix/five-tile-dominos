@@ -159,7 +159,7 @@ function App() {
     let unsub;
     let stopped = false;
     import('./firebase').then(({watchRoom}) => {
-      if (!stopped) unsub = watchRoom(room.code, (next) => { serverRef.current = next; if (next) setRoom(next); else resetToHome('That party no longer exists.'); }, connectionFailed);
+      if (!stopped) unsub = watchRoom(room.code, (next) => { serverRef.current = next; if (next) setRoom({...next, local: false}); else resetToHome('That party no longer exists.'); }, connectionFailed);
     }).catch(connectionFailed);
     return () => { stopped = true; unsub?.(); };
   }, [room?.code, room?.local]);
@@ -290,14 +290,12 @@ function App() {
     setPicked(null); setFlipped(false);
     if (action !== 'pass' && sound) buzz();
     if (room.local) { setRoom(next); return; }
-    // A move that ends the round deals new tiles at random, so wait for the server's deal instead of guessing it.
-    const dealsNewRound = next.status !== 'playing' || next.roundNumber !== room.roundNumber;
     const before = room;
     pendingRef.current = true;
-    if (dealsNewRound) setBusy(true); else setRoom(next);
-    import('./firebase').then(({ takeTurn }) => takeTurn(room.code, action, uid, index, end))
-      .catch((e) => { flightRef.current = null; setError(readableError(e)); setRoom(serverRef.current || before); })
-      .finally(() => { pendingRef.current = false; setBusy(false); });
+    setRoom(next);
+    import('./firebase').then(({ submitState }) => submitState(room.code, next))
+      .catch((e) => { flightRef.current = null; setError(readableError(e)); setRoom(before); })
+      .finally(() => { pendingRef.current = false; });
   };
   const chooseTile = (index) => {
     if (!myTurn || busy || !legalIndexes.has(index)) return;
