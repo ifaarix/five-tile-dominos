@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { emptyBoard, newGame, passTurn, playTile } from './game';
+import { DEFAULT_TARGET, emptyBoard, newGame, passTurn, playTile } from './game';
 import { decodeRoomState, encodeRoomState, isMember, planJoin, roomFromFirestore } from './roomStorage';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
@@ -33,26 +33,32 @@ export async function createRoom(name) {
     const code = makeCode();
     const ref = roomRef(code);
     const player = { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() };
-    const state = { status: 'lobby', players: [player], hands: {}, board: emptyBoard(), scores: {}, turn: null, target: 100, createdAt: Date.now() };
+    const state = { status: 'lobby', players: [player], hands: {}, board: emptyBoard(), scores: {}, turn: null, target: DEFAULT_TARGET, createdAt: Date.now() };
     const created = await runTransaction(db, async (tx) => {
       const existing = await tx.get(ref);
       if (existing.exists()) return false;
       tx.set(ref, encodeRoomState({ ...state, updatedAt: serverTimestamp() }));
       return true;
     });
-    if (created) return { code, uid };
+    // Hand the new room straight back so the lobby opens without waiting for the first snapshot.
+    if (created) return { code, uid, room: { ...state, code } };
   }
   throw new Error('Could not make a room code. Please try again.');
 }
 export async function joinRoom(codeInput, name) {
   const uid = await currentUid();
   const code = codeInput.trim().toUpperCase();
-  await runTransaction(db, async (tx) => {
+  const room = await runTransaction(db, async (tx) => {
     const ref = roomRef(code), snap = await tx.get(ref);
     const state = snap.exists() ? snap.data() : null;
-    if (planJoin(state, uid) === 'add') tx.update(ref, { players: [...state.players, { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() }] });
+    if (planJoin(state, uid) === 'add') {
+      const players = [...state.players, { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() }];
+      tx.update(ref, { players });
+      return { ...roomFromFirestore(code, state), players };
+    }
+    return roomFromFirestore(code, state);
   });
-  return { code, uid };
+  return { code, uid, room };
 }
 // Reopen a party this device is already seated in (page refresh, closed tab).
 // Returns null when the room is missing or this device is not a member.
@@ -60,7 +66,7 @@ export async function resumeRoom(codeInput) {
   const uid = await currentUid();
   const code = codeInput.trim().toUpperCase();
   const snap = await getDoc(roomRef(code));
-  return snap.exists() && isMember(snap.data(), uid) ? { code, uid } : null;
+  return snap.exists() && isMember(snap.data(), uid) ? { code, uid, room: roomFromFirestore(code, snap.data()) } : null;
 }
 export async function startRoom(code, uid) {
   await runTransaction(db, async (tx) => {

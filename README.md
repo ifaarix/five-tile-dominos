@@ -19,6 +19,6 @@ Players never need an email or password. The app creates an anonymous Firebase u
 
 ## Game notes
 
-This game uses a double-six set, highest-double opening in game one, a four-arm spinner, scoring from its four exposed branch tips, drawing from the boneyard when stuck, and a 100-point target. House rules vary; the in-app guide explains the version used here. The board pans in two dimensions so long games stay legible on small screens. Tile feedback uses a short lift on selection, smooth board auto-scroll, and optional soft tone/haptic response.
+This game uses a double-six set, highest-double opening in game one, a four-arm spinner, and scoring from its four exposed branch tips in fives (ends adding to 5 score 1 point, 10 scores 2, 15 scores 3, and so on) with a 20-point target. A player with no match draws one tile and the turn then passes. House rules vary; the in-app guide explains the version used here. Every domino is drawn from a single size unit (`--u`, always 2:1) in `src/tiles.css`, so tiles keep the same shape on every screen. The board scales to fit and pans when a long game outgrows it. Moves show instantly and are confirmed with Firestore in the background.
 
 Room state is client-managed for casual friend games. All players in a room can read the room document (including hands); this design is not appropriate for ranked or money games.

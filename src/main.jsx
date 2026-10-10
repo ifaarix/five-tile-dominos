@@ -1,17 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDownLeft, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Crown, Dices, DoorOpen, Link2, LoaderCircle, Plus, RotateCcw, Send, Sparkles, Users, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
-import { newGame, passTurn, playTile, playableEnds, boardOpenPip, boardTileCount, isSpinnerReady } from './game';
+import { ArrowDownLeft, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Crown, Dices, DoorOpen, Link2, LoaderCircle, Plus, RotateCcw, RotateCw, Send, Sparkles, Users, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
+import { DEFAULT_TARGET, endsForPip, newGame, passTurn, playTile, playableEnds, boardTileCount, isSpinnerReady } from './game';
 import { cloudReady } from './firebaseConfig';
 import './style.css';
+import './tiles.css';
 
 const RULES = [
-  ['The goal', 'Be the first to reach 100 points. With two players, draw 7 dominoes each; with three or four, draw 5. The rest stay in the boneyard.'],
+  ['The goal', `Be the first to reach ${DEFAULT_TARGET} points. With two players, draw 7 dominoes each; with three or four, draw 5. The rest stay in the boneyard.`],
   ['Start a round', 'The first round starts with the highest double. In later rounds, the player who went out last starts and may play any double. If they have no double, they draw exactly one tile; if it is not a double, their turn is skipped.'],
   ['Fill the spinner', 'The opening double goes in the center. Fill all four sides with matching tiles before extending any side. Once all four sides are filled, play outward from any matching open end.'],
-  ['Score fives', 'Scoring starts after the center double and all four sides are filled (five tiles total). Add the four exposed end pips; a multiple of 5 scores that many points.'],
-  ['End a round', 'A round ends when someone plays their last tile, or when nobody can play. The player who goes out scores the pips left in opponents’ hands. In a blocked round, the player with the fewest pips scores the difference. First to 100 wins.'],
-  ['House rules', 'This party uses your four-sided opening spinner rule. Play to 100; when a round is blocked, the player with the fewest pips scores the difference and starts the next round.'],
+  ['Score fives', 'Scoring starts once the center double and all four sides are filled. Add the four open end pips. If the total is a multiple of 5 you score one point for every five: 5 is 1 point, 10 is 2 points, 15 is 3 points, and so on.'],
+  ['Draw once', 'If you have no tile that fits, draw exactly one tile from the boneyard. Your turn then ends, even if the new tile would fit. When the boneyard is empty, you pass.'],
+  ['End a round', 'A round ends when someone plays their last tile, or when nobody can play. The player who goes out scores one point for every five pips left in opponents’ hands (rounded to the nearest five). In a blocked round, the player with the fewest pips scores the difference the same way.'],
 ];
 
 // localStorage can throw (private browsing, blocked site data), so never touch it directly.
@@ -43,27 +44,85 @@ function readableError(error) {
   return error?.message || 'Could not reach the party. Check your connection and try again.';
 }
 
-function Tile({ tile, onClick, selected = false, small = false, orientation = 'horizontal', target = false, disabled = false, label }) {
-  const [a,b] = tile;
-  const patterns = {0:[],1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
-  const face = (n) => <span className="pip-face">{Array.from({length:9},(_,i)=><i key={i} className={patterns[n].includes(i)?'pip on':'pip'} />)}</span>;
-  return <button type="button" className={`tile ${small?'tile-small':''} ${small?`tile-${orientation}`:''} ${selected?'tile-selected':''} ${target?'tile-target':''} ${disabled?'tile-disabled':''}`} onClick={onClick} disabled={disabled} aria-pressed={selected} aria-label={label || `${a} and ${b}`}>
-    {face(a)}<span className="tile-rule" />{face(b)}
-  </button>;
+const PIPS = { 0: [], 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+const Half = ({ n }) => <span className="half">{PIPS[n].map((p) => <i key={p} className={`pip p${p}`} />)}</span>;
+
+// o says which side the tile's FIRST half sits on: h (left), hr (right), v (top), vr (bottom).
+// Size always comes from the --u variable of the surrounding area, never from the tile itself.
+function Tile({ tile, o = 'v', onClick, selected = false, dim = false, fresh = false, disabled = false, label, slotKey }) {
+  const [a, b] = tile;
+  const className = `tile o-${o}${selected ? ' tile-selected' : ''}${dim ? ' tile-dim' : ''}${fresh ? ' tile-new' : ''}`;
+  const faces = <><Half n={a} /><Half n={b} /></>;
+  if (!onClick) return <div className={className} data-slot={slotKey} role="img" aria-label={label || `${a} and ${b}`}>{faces}</div>;
+  return <button type="button" className={className} onClick={onClick} disabled={disabled} aria-pressed={selected} aria-label={label || `${a} and ${b}`} data-slot={slotKey}>{faces}</button>;
 }
 
-function FourArmBoard({board, onRef, selectedTile, legalEnds = [], onPlayEnd}) {
-  const orientations = ['vertical-reverse','horizontal','vertical','horizontal-reverse'];
-  const arm = (tiles, index) => <div className={`spinner-arm arm-${index}`} key={index}>
-    {tiles.map((tile,i)=><Tile key={`${index}-${i}-${tile.join('')}`} tile={tile} small orientation={orientations[index]} disabled/>)}
-    {selectedTile && legalEnds.includes(index) && <Tile tile={selectedTile[0]===boardOpenPip(board,index)?selectedTile:[selectedTile[1],selectedTile[0]]} small orientation={orientations[index]} target onClick={()=>onPlayEnd(index)} label={`Place ${selectedTile[0]} and ${selectedTile[1]} on the ${['top','right','bottom','left'][index]} branch`}/>}
-    {!tiles.length&&!legalEnds.includes(index)&&<span className="arm-slot" aria-label="Open spinner side"/>}
+const ARM_O = ['vr', 'h', 'v', 'hr']; // top, right, bottom, left: first half always touches the centre
+const ARM_NAMES = ['top', 'right', 'bottom', 'left'];
+const FIT = { min: 28, max: 46, gap: 0.06 };
+
+function FourArmBoard({ board, boardRef, face, ends, onPlayEnd }) {
+  const lens = board.arms.map((arm) => arm.length).join(',');
+  // Scale the whole cross (never the tile shape) so it fits the felt, down to a readable minimum.
+  useLayoutEffect(() => {
+    const el = boardRef.current;
+    if (!el || !board.center) return;
+    const fit = () => {
+      const [top, right, bottom, left] = board.arms.map((arm) => arm.length + 1); // +1 keeps room for the next tile
+      const g = FIT.gap;
+      const w = (left + right) * (2 + g) + 2 * g + 2;  // arms + centre + padding, in tile-widths
+      const h = (top + bottom) * (2 + g) + 2 * g + 3;
+      const u = Math.floor(Math.max(FIT.min, Math.min(FIT.max, el.clientWidth / w, el.clientHeight / h)));
+      el.style.setProperty('--bu', `${u}px`);
+      el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+      el.scrollTop = Math.max(0, (el.scrollHeight - el.clientHeight) / 2);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [lens, !!board.center]);
+
+  const arm = (index) => {
+    const tiles = board.arms[index];
+    const o = ARM_O[index];
+    const open = !!face && ends.includes(index);
+    return <div className={`spinner-arm arm-${index}`} key={index}>
+      {tiles.map((tile, i) => <Tile key={i} tile={tile} o={o} slotKey={`${index}-${i}`} />)}
+      {open ? <button type="button" className={`ghost o-${o}`} onClick={() => onPlayEnd(index)} aria-label={`Place ${face[1]} and ${face[0]} on the ${ARM_NAMES[index]} branch`} />
+        : !tiles.length && <span className={`slot o-${o}`} aria-hidden="true" />}
+    </div>;
+  };
+  return <div className="board-scroll" ref={boardRef} aria-label="Domino board">
+    {board.center
+      ? <div className="spinner-board">{arm(0)}<div className="spinner-center"><Tile tile={board.center} o="v" slotKey="c" /></div>{arm(1)}{arm(2)}{arm(3)}</div>
+      : <div className="empty-board"><span>✳</span><strong>The board is yours</strong><small>Open with a double</small></div>}
   </div>;
-  return <div className="board-scroll" ref={onRef} aria-label="Domino board, scroll to view all tiles">
-    <div className="spinner-board">
-      {arm(board.arms[0],0)}<div className="spinner-center">{board.center?<Tile tile={board.center} small orientation="vertical" disabled/>:<div className="empty-board"><span>✳</span><strong>The board is yours</strong><small>Open with a double</small></div>}</div>{arm(board.arms[1],1)}{arm(board.arms[2],2)}{arm(board.arms[3],3)}
-    </div>
-  </div>;
+}
+
+// Rotation that makes a tile in its landing orientation look like an upright hand tile
+// (the pip that touches the board on top), used as the start of the flight.
+const FLIGHT_TURN = [180, 90, 0, -90];
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const keepInView = (scroller, el) => {
+  const box = scroller.getBoundingClientRect(), r = el.getBoundingClientRect(), pad = 14;
+  if (r.left < box.left + pad) scroller.scrollLeft -= box.left + pad - r.left; else if (r.right > box.right - pad) scroller.scrollLeft += r.right - (box.right - pad);
+  if (r.top < box.top + pad) scroller.scrollTop -= box.top + pad - r.top; else if (r.bottom > box.bottom - pad) scroller.scrollTop += r.bottom - (box.bottom - pad);
+};
+
+function buzz() {
+  if (navigator.vibrate) navigator.vibrate(14);
+  try {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) return;
+    const context = new Context(), oscillator = context.createOscillator(), gain = context.createGain();
+    oscillator.frequency.value = 520;
+    gain.gain.setValueAtTime(.035, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .045);
+    oscillator.connect(gain); gain.connect(context.destination);
+    oscillator.start(); oscillator.stop(context.currentTime + .05);
+    oscillator.onended = () => context.close();
+  } catch {}
 }
 
 function App() {
@@ -81,11 +140,17 @@ function App() {
   const [demo, setDemo] = useState(false);
   const [sound, setSound] = useState(false);
   const [expandedRule, setExpandedRule] = useState(0);
+  const [pop, setPop] = useState(null);
   const boardRef = useRef(null);
+  const handRef = useRef(null);
   const enteredRef = useRef(false);
+  const serverRef = useRef(null);   // last room state confirmed by Firestore
+  const pendingRef = useRef(false); // a move is on its way to Firestore
+  const flightRef = useRef(null);   // where the tile you just played left your hand
+  const seenMoveRef = useRef(undefined); // last move already animated (undefined until a real state has been seen)
   const preloadFirebase = () => { if (cloudReady) import('./firebase').catch(() => {}); };
   // Back to the landing page with a clean slate: no leftover modal, saved party or invite hash.
-  const resetToHome = (message = '') => { setRoom(null); setUid(null); setDemo(false); setPicked(null); setFlipped(false); setModal(''); setError(message); store.remove(ROOM_KEY); location.hash = ''; };
+  const resetToHome = (message = '') => { setRoom(null); setUid(null); setDemo(false); setPicked(null); setFlipped(false); setModal(''); setPop(null); setError(message); store.remove(ROOM_KEY); location.hash = ''; serverRef.current = null; pendingRef.current = false; seenMoveRef.current = undefined; };
   // A failed connection while the party is still opening sends the player home with the reason.
   const connectionFailed = (e) => { setError(readableError(e)); setRoom((current) => current?.status === 'connecting' ? null : current); };
 
@@ -94,7 +159,7 @@ function App() {
     let unsub;
     let stopped = false;
     import('./firebase').then(({watchRoom}) => {
-      if (!stopped) unsub = watchRoom(room.code, (next) => next ? setRoom(next) : resetToHome('That party no longer exists.'), connectionFailed);
+      if (!stopped) unsub = watchRoom(room.code, (next) => { serverRef.current = next; if (next) setRoom(next); else resetToHome('That party no longer exists.'); }, connectionFailed);
     }).catch(connectionFailed);
     return () => { stopped = true; unsub?.(); };
   }, [room?.code, room?.local]);
@@ -106,13 +171,10 @@ function App() {
     import('./firebase').then(({resumeRoom}) => resumeRoom(target)).then((result) => {
       if (cancelled || enteredRef.current || !result) return;
       enteredRef.current = true;
-      setUid(result.uid); setRoom({code: result.code, local: false, status: 'connecting'}); location.hash = result.code;
+      setUid(result.uid); setRoom({...result.room, local: false}); location.hash = result.code;
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
-  useEffect(() => {
-    if (room?.board?.center) boardRef.current?.scrollTo({left: boardRef.current.scrollWidth/2, top: boardRef.current.scrollHeight/2, behavior:'smooth'});
-  }, [room?.board?.center, room?.board?.arms?.map(a=>a.length).join(',')]);
   useEffect(() => { if (room?.status === 'finished') setModal('finished'); }, [room?.status]);
   useEffect(() => { setPicked(null); setFlipped(false); }, [room?.turn]);
 
@@ -121,7 +183,64 @@ function App() {
   const myTurn = !!room && (room.local ? room.status === 'playing' : room.turn === uid);
   const handOwner = room?.local ? room.turn : uid;
   const hand = room?.hands?.[handOwner] || [];
-  const possibleEnds = picked == null || !room ? [] : playableEnds([hand[picked]], room.board);
+  const pickedTile = picked == null ? null : hand[picked] || null;
+  // The face turned toward the board is the top pip: only the open ends that match it are offered.
+  const face = pickedTile ? (flipped ? [pickedTile[1], pickedTile[0]] : pickedTile) : null;
+  const possibleEnds = face && room ? endsForPip(room.board, face[0]) : [];
+  const canFlip = !!pickedTile && !!room && pickedTile[0] !== pickedTile[1] && endsForPip(room.board, pickedTile[0]).length > 0 && endsForPip(room.board, pickedTile[1]).length > 0;
+
+  // A play is identified by who/where/what, not by timestamp, so the optimistic move and the
+  // copy that comes back from Firestore count as the same move and animate only once.
+  const lastMove = room?.lastMove;
+  const moveSig = lastMove?.tile && !lastMove.drew && room?.board ? `${room.roundNumber}|${lastMove.playerId}|${lastMove.arm}|${lastMove.position}|${lastMove.tile.join('')}` : '';
+  useLayoutEffect(() => {
+    if (!room || room.status === 'connecting') return;
+    if (seenMoveRef.current === undefined) { seenMoveRef.current = moveSig; return; } // first state of this party: nothing to replay
+    if (!moveSig || moveSig === seenMoveRef.current) return;
+    seenMoveRef.current = moveSig;
+    flyIn(lastMove);
+  }, [moveSig, room?.status]);
+
+  const flyIn = (move) => {
+    const own = flightRef.current; flightRef.current = null;
+    const scroller = boardRef.current;
+    const dest = scroller?.querySelector(`.tile[data-slot="${move.arm == null ? 'c' : `${move.arm}-${move.position}`}"]`);
+    const total = (move.gained || 0) + (move.bonus || 0);
+    if (total > 0) {
+      const who = room.players?.find((player) => player.id === move.playerId)?.name || 'Player';
+      setTimeout(() => setPop({ id: moveSig, text: `${who} scores`, points: total }), dest ? 300 : 0);
+      setTimeout(() => setPop((current) => current?.id === moveSig ? null : current), 1700);
+    }
+    if (!dest || reducedMotion() || !dest.animate) return;
+    keepInView(scroller, dest);
+    const to = dest.getBoundingClientRect();
+    const unit = Math.min(to.width, to.height);
+    const turn = FLIGHT_TURN[move.arm ?? 2];
+    let from, scale, fade = false;
+    if (own?.rect) { from = own.rect; scale = own.rect.width / unit; }
+    else {
+      const orb = document.querySelector(`[data-pid="${move.playerId}"]`);
+      if (!orb) return;
+      from = orb.getBoundingClientRect(); scale = Math.max(.25, from.width / unit * .8); fade = true;
+    }
+    const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+    const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+    const clone = dest.cloneNode(true);
+    clone.removeAttribute('data-slot');
+    clone.classList.add('fly-tile');
+    clone.style.cssText = `--u:${unit}px;left:${to.left}px;top:${to.top}px`;
+    document.body.appendChild(clone);
+    dest.style.visibility = 'hidden';
+    const lift = Math.min(70, 26 + Math.abs(dy) * .12);
+    const finish = () => { clone.remove(); dest.style.visibility = ''; };
+    const flight = clone.animate([
+      { transform: `translate(${dx}px,${dy}px) rotate(${turn}deg) scale(${scale})`, opacity: fade ? .15 : 1 },
+      { transform: `translate(${dx * .45}px,${dy * .45 - lift}px) rotate(${turn * .45}deg) scale(${(scale + 1) / 2 * 1.1})`, opacity: 1, offset: .55 },
+      { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 },
+    ], { duration: 340, easing: 'cubic-bezier(.25,.8,.3,1)', fill: 'both' });
+    flight.onfinish = finish; flight.oncancel = finish;
+    setTimeout(finish, 700); // never leave a tile hidden
+  };
 
   const saveName = () => { const value = name.trim(); if (!value) { setError('Add your name to take a seat.'); return false; } store.set('five-tiles-name',value); setName(value); setError(''); return true; };
   const enterRoom = async (fn) => {
@@ -132,7 +251,8 @@ function App() {
       const firebase = await import('./firebase');
       const result = await fn(firebase);
       store.set(ROOM_KEY, result.code);
-      setUid(result.uid); setRoom({code:result.code, local:false, status:'connecting'}); location.hash = result.code;
+      seenMoveRef.current = undefined;
+      setUid(result.uid); setRoom({...result.room, local:false}); location.hash = result.code;
     }
     catch (e) { setError(readableError(e)); }
     finally { setBusy(false); }
@@ -151,37 +271,46 @@ function App() {
     enteredRef.current = true;
     const players = [{id:'you',name:name.trim()},{id:'friend',name:'Your friend'}];
     const game = newGame(players);
+    seenMoveRef.current = undefined;
     setUid('you'); setDemo(true); setError(''); setPicked(null); setModal('');
     setRoom({...game,code:'PRACTICE',local:true});
   };
   const backHome = () => resetToHome();
-  const doAction = async (action, index, end) => {
-    if (!room || busy) return;
-    setBusy(true); setError('');
-    try {
-      if (room.local) {
-        // Work the move out first so an illegal one is caught below instead of crashing the render.
-        setRoom(action==='pass' ? passTurn(room, room.turn) : playTile(room, room.turn, index, end));
-      }
-      else await (await import('./firebase')).takeTurn(room.code,action,uid,index,end);
-      setPicked(null);
-      if (action !== 'pass' && sound) {
-        if (navigator.vibrate) navigator.vibrate(14);
-        try { const Audio = window.AudioContext || window.webkitAudioContext; if (Audio) { const context = new Audio(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = 520; gain.gain.setValueAtTime(.035,context.currentTime); gain.gain.exponentialRampToValueAtTime(.001,context.currentTime+.045); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime+.05); oscillator.onended=()=>context.close(); } } catch {}
-      }
-    } catch (e) { setError(readableError(e)); }
-    finally { setBusy(false); }
+  // Moves are applied on screen immediately and confirmed by Firestore in the background,
+  // so the game never waits on the network. If the server rejects a move, the table snaps back.
+  const doAction = (action, index, end) => {
+    if (!room || pendingRef.current || busy) return;
+    const actor = room.local ? room.turn : uid;
+    let next;
+    try { next = action === 'pass' ? passTurn(room, actor) : playTile(room, actor, index, end); }
+    catch (e) { setError(readableError(e)); return; }
+    setError('');
+    const handTile = action === 'pass' ? null : handRef.current?.querySelector(`.tile[data-slot="h${index}"]`);
+    flightRef.current = handTile ? { rect: handTile.getBoundingClientRect() } : null;
+    setPicked(null); setFlipped(false);
+    if (action !== 'pass' && sound) buzz();
+    if (room.local) { setRoom(next); return; }
+    // A move that ends the round deals new tiles at random, so wait for the server's deal instead of guessing it.
+    const dealsNewRound = next.status !== 'playing' || next.roundNumber !== room.roundNumber;
+    const before = room;
+    pendingRef.current = true;
+    if (dealsNewRound) setBusy(true); else setRoom(next);
+    import('./firebase').then(({ takeTurn }) => takeTurn(room.code, action, uid, index, end))
+      .catch((e) => { flightRef.current = null; setError(readableError(e)); setRoom(serverRef.current || before); })
+      .finally(() => { pendingRef.current = false; setBusy(false); });
   };
   const chooseTile = (index) => {
     if (!myTurn || busy || !legalIndexes.has(index)) return;
-    if (opening) { doAction('play',index,null); return; }
+    if (opening) { doAction('play', index, null); return; }
     if (picked === index) {
-      if (possibleEnds.length > 1) setFlipped((value) => !value);
+      // Tapping the lifted tile again: turn it over if the other end also fits somewhere, otherwise place it when there is only one spot.
+      if (canFlip) setFlipped((value) => !value);
+      else if (possibleEnds.length === 1) doAction('play', index, possibleEnds[0]);
       else { setPicked(null); setFlipped(false); }
-    } else {
-      setPicked(index);
-      setFlipped(false);
+      return;
     }
+    setPicked(index);
+    setFlipped(endsForPip(room.board, hand[index][0]).length === 0);
   };
   const start = async () => {
     setBusy(true);setError('');try { await (await import('./firebase')).startRoom(room.code,uid); } catch(e) { setError(readableError(e)); } finally { setBusy(false); }
@@ -232,13 +361,17 @@ function App() {
       <button className="primary-btn lobby-start" onClick={()=>demo?setRoom({...room,status:'playing'}):start()} disabled={busy||(!demo&&room.players?.length<2)||(!demo&&!isHost)}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Sparkles size={18}/>}</span>{!demo&&!isHost?'Waiting for the host…':room.players?.length<2&&!demo?'Waiting for a friend…':'Let’s play'}<ArrowRight size={18}/></button>
       <button className="text-btn lobby-exit" onClick={backHome}>Leave party</button>{error&&<p className="error-note" role="alert">{error}</p>}
     </section> : <section className="table-screen">
-      <div className="table-topline"><span className="round-label"><span className="live-dot"/>{room.status==='finished'?'GAME OVER':'GAME TO 100'}</span><button className="share-mini" onClick={copyInvite}><Link2 size={15}/>{room.code}{copied&&<Check size={14}/>}</button></div>
-      <div className="score-strip">{room.players?.map((p,i)=><div key={p.id} className={`score-player ${p.id===room.turn?'score-active':''}`}><span className={`player-orb orb-${i}`}>{p.name.slice(0,1).toUpperCase()}</span><div className="score-info"><span className="score-name">{p.name}{p.id===uid?' (you)':''}{p.id===room.players[0].id&&<Crown size={12}/>}</span><strong>{room.scores?.[p.id]||0}<small> pts</small></strong></div><span className="tile-count">{room.hands?.[p.id]?.length??0} <span>tiles</span></span></div>)}</div>
-      <div className="table-felt"><div className="felt-top"><span>ROUND {room.roundNumber||1} · {boardTileCount(room.board)} {boardTileCount(room.board)===1?'tile':'tiles'} played</span><span>{isSpinnerReady(room.board)?'ENDS SCORE IN FIVES':'FILL ALL FOUR SIDES TO START SCORING'}</span></div><FourArmBoard board={room.board} onRef={boardRef} selectedTile={picked==null?null:(flipped?[hand[picked][1],hand[picked][0]]:hand[picked])} legalEnds={possibleEnds} onPlayEnd={(end)=>doAction('play',picked,end)}/><div className="open-ends">{isSpinnerReady(room.board)?room.board.arms.map((a,i)=><span key={i}><i/>{a.at(-1)[1]} open</span>):<span>{room.board.center?'Fill the remaining sides of the double':'The opening double goes in the center'}</span>}</div></div>
-      <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins this party!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':opening?'No double — draw one; a non-double skips your turn':'No match — draw or pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
-      {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div><div className="hand-scroll" aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={`${tile.join('')}-${i}`} tile={picked===i&&flipped?[tile[1],tile[0]]:tile} selected={picked===i} disabled={!myTurn||busy||!legalIndexes.has(i)} onClick={()=>chooseTile(i)} label={`Select ${tile[0]} and ${tile[1]} domino`}/>)}</div>
-      {picked!=null&&<div className="end-chooser"><span>{possibleEnds.length>1?(flipped?'Flipped · tap a yellow domino to place':'Tap the tile again to flip, or choose a yellow domino'):('Tap the yellow domino on the board to place')}</span></div>}
-      <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{opening?(room.boneyard?.length?<><Dices size={16}/> Draw one (skip if not a double)</>:<><ArrowDownLeft size={16}/> Skip turn</>):room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text"><Sparkles size={14}/>{opening?'Tap an eligible double to open':picked!=null?'Tap a yellow domino to place':'Tap a matching domino to select'}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
+      <div className="table-topline"><span className="round-label"><span className="live-dot"/>{room.status==='finished'?'GAME OVER':`GAME TO ${room.target||DEFAULT_TARGET}`}</span><button className="share-mini" onClick={copyInvite}><Link2 size={15}/>{room.code}{copied&&<Check size={14}/>}</button></div>
+      <div className="score-strip">{room.players?.map((p,i)=><div key={p.id} className={`score-player ${p.id===room.turn?'score-active':''}`}><span className={`player-orb orb-${i}`} data-pid={p.id}>{p.name.slice(0,1).toUpperCase()}</span><div className="score-info"><span className="score-name">{p.name}{p.id===uid?' (you)':''}{p.id===room.players[0].id&&<Crown size={12}/>}</span><strong>{room.scores?.[p.id]||0}<small> pts</small></strong></div><span className="tile-count">{room.hands?.[p.id]?.length??0} <span>tiles</span></span></div>)}</div>
+      <div className="table-felt"><div className="felt-top"><span>ROUND {room.roundNumber||1} · {boardTileCount(room.board)} PLAYED</span><span>{isSpinnerReady(room.board)?'ENDS SCORE IN FIVES':'FILL 4 SIDES TO SCORE'}</span></div>
+        <FourArmBoard board={room.board} boardRef={boardRef} face={face} ends={possibleEnds} onPlayEnd={(end)=>doAction('play',picked,end)}/>
+        {pop&&<div className="gain-pop" key={pop.id}>{pop.text} <b>+{pop.points}</b></div>}
+        <div className="open-ends">{isSpinnerReady(room.board)?room.board.arms.map((a,i)=><span key={i} className={possibleEnds.includes(i)?'match':''}><i/>{['↑','→','↓','←'][i]} {a.at(-1)[1]} open</span>):<span>{room.board.center?'Fill the remaining sides of the double':'The opening double goes in the center'}</span>}</div></div>
+      <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins this party!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':opening?'No double — draw one; a non-double skips your turn':room.boneyard?.length?'No match — draw one tile, then play passes':'No match — pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
+      {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div>
+        <div className="hand-scroll" ref={handRef} aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={tile.join('')} tile={picked===i&&face?face:tile} o="v" slotKey={`h${i}`} selected={picked===i} dim={myTurn&&!legalIndexes.has(i)} fresh={!!lastMove?.drew&&lastMove.playerId===handOwner&&i===hand.length-1} disabled={!myTurn||busy||!legalIndexes.has(i)} onClick={()=>chooseTile(i)} label={`Select ${tile[0]} and ${tile[1]} domino`}/>)}</div>
+        {picked!=null&&<div className="end-chooser"><span>{possibleEnds.length>1?'Tap a yellow outline to place it':'Tap the yellow outline, or the tile again, to place it'}</span>{canFlip&&<button type="button" onClick={()=>setFlipped((value)=>!value)}><RotateCw size={14}/>Flip</button>}</div>}
+        <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{opening?(room.boneyard?.length?<><Dices size={16}/> Draw one (skip if not a double)</>:<><ArrowDownLeft size={16}/> Skip turn</>):room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text">{picked==null&&<><Sparkles size={14}/>{opening?'Tap an eligible double to open':'Tap a matching domino to select'}</>}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
       {error&&<p className="error-note game-error" role="alert">{error}</p>}
     </section>}
     {notice&&<div className="toast"><Check size={16}/>{notice}</div>}

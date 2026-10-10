@@ -1,0 +1,92 @@
+/* ------------------------------------------------------------------
+   Dominoes, the board and the hand.
+
+   One rule keeps every domino the same shape on every screen: a tile is
+   always exactly 2u x 1u (or 1u x 2u when upright), and --u is the ONLY
+   thing that sets its size. Nothing here uses percentages of the parent,
+   aspect-ratio or per-breakpoint tile sizes, so a phone, a laptop and a
+   resized window all draw identical dominoes, just at different --u.
+   ------------------------------------------------------------------ */
+:root{--u:40px;--hl:#ffd23f}
+
+.tile,.slot,.ghost{box-sizing:border-box;flex:none;display:flex;width:calc(var(--u)*2);height:var(--u);margin:0;padding:0;border:0;border-radius:calc(var(--u)*.17)}
+/* Which side the tile's FIRST half sits on: h = left, hr = right, v = top, vr = bottom. */
+.o-hr{flex-direction:row-reverse}
+.o-v,.o-vr{width:var(--u);height:calc(var(--u)*2)}
+.o-v{flex-direction:column}
+.o-vr{flex-direction:column-reverse}
+
+.tile{position:relative;font:inherit;color:inherit;-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;
+  background:linear-gradient(150deg,#fffef8 0%,#f7f0dd 50%,#e8ddbf 100%);
+  box-shadow:inset 0 calc(var(--u)*.04) 0 #fff,inset 0 calc(var(--u)*-.05) calc(var(--u)*.08) rgba(125,100,55,.4),0 calc(var(--u)*.05) calc(var(--u)*.1) rgba(0,0,0,.45),0 0 0 1px rgba(70,50,15,.4)}
+.half{position:relative;flex:1 1 0;min-width:0;min-height:0}
+/* Real dominoes are drilled once and then turned, so the pips turn with a sideways tile. */
+.o-h .half,.o-hr .half{transform:rotate(90deg)}
+/* The groove between the two halves. */
+.tile::after{content:"";position:absolute;pointer-events:none;background:rgba(88,62,20,.55);box-shadow:0 1px 0 rgba(255,255,255,.75);border-radius:2px}
+.o-h.tile::after,.o-hr.tile::after{left:50%;top:15%;bottom:15%;width:max(1px,calc(var(--u)*.04));transform:translateX(-50%)}
+.o-v.tile::after,.o-vr.tile::after{top:50%;left:15%;right:15%;height:max(1px,calc(var(--u)*.04));transform:translateY(-50%)}
+
+/* A pip is a round hole drilled into the bone: dark inside, shadowed under the upper lip, a lit rim below. */
+.pip{position:absolute;left:var(--x);top:var(--y);width:calc(var(--u)*.26);height:calc(var(--u)*.26);margin:calc(var(--u)*-.13) 0 0 calc(var(--u)*-.13);border-radius:50%;
+  background:radial-gradient(circle at 40% 30%,#303030 0,#0c0c0c 52%,#000 100%);
+  box-shadow:inset 0 calc(var(--u)*.055) calc(var(--u)*.06) rgba(0,0,0,.95),inset 0 calc(var(--u)*-.03) calc(var(--u)*.035) rgba(255,255,255,.16),0 calc(var(--u)*.022) 0 rgba(255,255,255,.9),0 calc(var(--u)*-.014) calc(var(--u)*.02) rgba(75,50,15,.4)}
+.p0{--x:27%;--y:20%}.p1{--x:50%;--y:20%}.p2{--x:73%;--y:20%}
+.p3{--x:27%;--y:50%}.p4{--x:50%;--y:50%}.p5{--x:73%;--y:50%}
+.p6{--x:27%;--y:80%}.p7{--x:50%;--y:80%}.p8{--x:73%;--y:80%}
+
+/* ---- Hand ---- */
+.hand-scroll{--u:var(--hu);--hu:clamp(44px,calc((min(100vw,720px) - 76px)/6.4),64px);display:flex;align-items:flex-end;gap:6px;margin:0 -4px;padding:calc(var(--u)*.36) 4px 10px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.hand-scroll::-webkit-scrollbar{display:none}
+.hand-scroll>.tile:first-child{margin-left:auto}
+.hand-scroll>.tile:last-child{margin-right:auto}
+.hand-scroll .tile{cursor:pointer;transition:transform .12s ease-out}
+.hand-scroll .tile:disabled{cursor:default}
+.tile-dim{opacity:.4}
+.tile-selected{transform:translateY(calc(var(--u)*-.24));box-shadow:inset 0 calc(var(--u)*.04) 0 #fff,0 0 0 2px var(--hl),0 calc(var(--u)*.14) calc(var(--u)*.22) rgba(0,0,0,.5)}
+.tile-new{animation:tile-draw .24s ease-out}
+@keyframes tile-draw{from{transform:translateY(24px) scale(.7);opacity:0}to{transform:none;opacity:1}}
+
+/* ---- Table ---- */
+.table-felt{position:relative;overflow:hidden;height:clamp(320px,50vh,520px);height:clamp(320px,50svh,520px);border-radius:16px;background:radial-gradient(ellipse at 50% 45%,#327455,#24533f 74%);border:1px solid #78a17a3b;box-shadow:inset 0 0 50px #102d2252,0 12px 30px #080c0a25}
+.table-felt::before{content:'';position:absolute;inset:8px;border:1px solid #d6edc81c;border-radius:11px;pointer-events:none}
+.board-scroll{position:absolute;inset:30px 0 28px;display:grid;overflow:auto;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.board-scroll::-webkit-scrollbar{display:none}
+
+/* The cross: arms are packed against the centre double, so tiles sit close together
+   and a long arm on one side never pushes the other arms away. */
+.spinner-board{--u:var(--bu,36px);--g:calc(var(--u)*.06);margin:auto;padding:calc(var(--u)*.5);display:grid;gap:var(--g);
+  grid-template-columns:auto auto auto;grid-template-rows:auto calc(var(--u)*2) auto;
+  grid-template-areas:". top ." "left center right" ". bottom ."}
+.spinner-center{grid-area:center;display:flex}
+.spinner-arm{display:flex;gap:var(--g)}
+.arm-0{grid-area:top;align-self:end;justify-self:center;flex-direction:column-reverse}
+.arm-1{grid-area:right;align-self:center;justify-self:start;flex-direction:row}
+.arm-2{grid-area:bottom;align-self:start;justify-self:center;flex-direction:column}
+.arm-3{grid-area:left;align-self:center;justify-self:end;flex-direction:row-reverse}
+.slot{border:1.5px dashed rgba(255,255,255,.2);background:rgba(0,0,0,.08)}
+
+/* Where the selected tile can go: just a yellow outline. */
+.ghost{position:relative;cursor:pointer;-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;background:rgba(255,210,63,.1);box-shadow:0 0 0 2.5px var(--hl),0 0 calc(var(--u)*.5) rgba(255,210,63,.4)}
+.ghost::after{content:"";position:absolute;inset:-8px}
+.ghost:hover,.ghost:focus-visible{background:rgba(255,210,63,.24);outline:none}
+
+.empty-board{display:grid;place-items:center;gap:4px;margin:auto;padding:0 20px;color:#dbead4;text-align:center}
+.empty-board span{font-size:22px;color:var(--lime)}
+.empty-board strong{font:600 17px var(--serif)}
+.empty-board small{font-size:11px;color:#b9cbb5}
+.open-ends i{flex:none}
+.open-ends .match{color:var(--hl)}
+.open-ends .match i{background:var(--hl);box-shadow:0 0 8px rgba(255,210,63,.7)}
+
+/* ---- Moving tiles ---- */
+.fly-tile{position:fixed;z-index:60;margin:0;pointer-events:none;will-change:transform;box-shadow:inset 0 calc(var(--u)*.04) 0 #fff,0 calc(var(--u)*.3) calc(var(--u)*.5) rgba(0,0,0,.45),0 0 0 1px rgba(70,50,15,.4)}
+.gain-pop{position:absolute;z-index:5;left:50%;top:36px;display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;background:#10241b;border:1px solid rgba(255,210,63,.6);color:var(--hl);font:700 13px 'DM Sans',sans-serif;white-space:nowrap;pointer-events:none;transform:translateX(-50%);animation:gain-pop 1.25s ease-out both}
+.gain-pop b{font:700 17px var(--mono)}
+@keyframes gain-pop{0%{opacity:0;transform:translate(-50%,10px) scale(.85)}14%{opacity:1;transform:translate(-50%,0) scale(1.06)}24%{transform:translate(-50%,0) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-14px)}}
+
+/* ---- Below the board ---- */
+.end-chooser{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;color:#cdd3c5;font-size:11px;line-height:1.4}
+.end-chooser button{flex:none;display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid rgba(255,210,63,.5);border-radius:7px;background:rgba(255,210,63,.1);color:var(--hl);font:600 11px 'DM Sans',sans-serif;cursor:pointer}
+
+@media (prefers-reduced-motion:reduce){.tile-new,.gain-pop{animation-duration:.01ms}.hand-scroll .tile{transition:none}}

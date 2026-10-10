@@ -13,6 +13,10 @@ export const shuffle = (values) => {
   return result;
 };
 
+// Points are counted in "fives": ends adding up to 5 score 1 point, 10 scores 2, 15 scores 3...
+export const DEFAULT_TARGET = 20;
+export const fivesOf = (pips) => Math.round(pips / 5);
+
 export const emptyBoard = () => ({ center: null, arms: [[], [], [], []] });
 export const isSpinnerReady = (board) => !!board?.center && board.arms.every((arm) => arm.length > 0);
 export const boardTileCount = (board) => board?.center ? 1 + board.arms.reduce((sum, arm) => sum + arm.length, 0) : 0;
@@ -48,22 +52,25 @@ export function newGame(players, options = {}) {
     openingDouble: openingRound ? high.value : null,
     lastMove: null,
     winner: null,
-    target: options.target || 100,
+    target: options.target || DEFAULT_TARGET,
     createdAt: Date.now(),
   };
 }
 
-function matchingPip(tile, pip) {
-  return tile[0] === pip || tile[1] === pip;
-}
-
-export function playableEnds(hand, board) {
+// Arms that a tile face showing `pip` could connect to. Until all four sides of
+// the spinner are filled, only the first empty side is open.
+export function endsForPip(board, pip) {
   if (!board?.center) return [];
   const firstEmptyArm = board.arms.findIndex((arm) => arm.length === 0);
-  if (firstEmptyArm >= 0) {
-    return hand.some((tile) => matchingPip(tile, board.center[0])) ? [firstEmptyArm] : [];
-  }
-  return board.arms.flatMap((arm, index) => hand.some((tile) => matchingPip(tile, arm.at(-1)[1])) ? [index] : []);
+  if (firstEmptyArm >= 0) return board.center[0] === pip ? [firstEmptyArm] : [];
+  return board.arms.flatMap((arm, index) => arm.at(-1)[1] === pip ? [index] : []);
+}
+
+// Arms any tile in `hand` could connect to, whichever way it is turned.
+export function playableEnds(hand, board) {
+  const ends = new Set();
+  for (const tile of hand) for (const pip of new Set(tile)) endsForPip(board, pip).forEach((index) => ends.add(index));
+  return [...ends].sort((a, b) => a - b);
 }
 
 function nextPlayerId(players, playerId) {
@@ -123,12 +130,15 @@ export function playTile(state, playerId, tileIndex, armIndex = null) {
 
   const hands = { ...state.hands, [playerId]: hand.filter((_, index) => index !== tileIndex) };
   const pointsAtEnds = scoreEnds(board);
-  const gained = pointsAtEnds > 0 && pointsAtEnds % 5 === 0 ? pointsAtEnds : 0;
+  const gained = pointsAtEnds > 0 && pointsAtEnds % 5 === 0 ? fivesOf(pointsAtEnds) : 0;
   const scores = { ...state.scores, [playerId]: state.scores[playerId] + gained };
   const lastMove = { playerId, tile: [...tile], arm: placedArm, position, gained, at: Date.now() };
   const empty = hands[playerId].length === 0;
   if (empty) {
-    scores[playerId] += Object.entries(hands).reduce((sum, [id, tiles]) => id === playerId ? sum : sum + tiles.flat().reduce((total, pip) => total + pip, 0), 0);
+    // Going out: one point per five pips still in opponents' hands.
+    const bonus = fivesOf(Object.entries(hands).reduce((sum, [id, tiles]) => id === playerId ? sum : sum + tiles.flat().reduce((total, pip) => total + pip, 0), 0));
+    scores[playerId] += bonus;
+    lastMove.bonus = bonus;
   }
   if (Object.values(scores).some((score) => score >= state.target)) {
     const winner = Object.entries(scores).find(([, score]) => score >= state.target)?.[0];
@@ -143,8 +153,9 @@ function finishBlockedRound(state, playerId) {
   const lowest = Math.min(...Object.values(totals));
   const leadPlayerId = state.players.find((player) => totals[player.id] === lowest).id;
   const highest = Math.max(...Object.values(totals));
-  const scores = { ...state.scores, [leadPlayerId]: state.scores[leadPlayerId] + highest - lowest };
-  return startNextRound(state, scores, leadPlayerId, { playerId, blocked: true, at: Date.now() });
+  const bonus = fivesOf(highest - lowest);
+  const scores = { ...state.scores, [leadPlayerId]: state.scores[leadPlayerId] + bonus };
+  return startNextRound(state, scores, leadPlayerId, { playerId, blocked: true, bonus, bonusTo: leadPlayerId, at: Date.now() });
 }
 
 export function passTurn(state, playerId) {
@@ -168,9 +179,17 @@ export function passTurn(state, playerId) {
   }
 
   if (playableEnds(hand, state.board).length) throw new Error('You have a playable tile.');
+  // One draw per turn: take a tile from the boneyard, then the turn moves on
+  // (even if the new tile happens to fit).
   if (state.boneyard.length) {
     const [tile, ...boneyard] = state.boneyard;
-    return { ...state, boneyard, hands: { ...state.hands, [playerId]: [...hand, tile] }, lastMove: { playerId, drew: true, tile, at: Date.now() } };
+    return {
+      ...state,
+      boneyard,
+      hands: { ...state.hands, [playerId]: [...hand, tile] },
+      turn: nextPlayerId(state.players, playerId),
+      lastMove: { playerId, drew: true, tile, at: Date.now() },
+    };
   }
 
   const nextTurn = nextPlayerId(state.players, playerId);
