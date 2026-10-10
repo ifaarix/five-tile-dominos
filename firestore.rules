@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  function signedIn() { return request.auth != null; }
+  function inRoom(players, uid) {
+    return (players.size() > 0 && players[0].id == uid)
+      || (players.size() > 1 && players[1].id == uid)
+      || (players.size() > 2 && players[2].id == uid)
+      || (players.size() > 3 && players[3].id == uid);
+  }
+  match /databases/{database}/documents {
+    match /rooms/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.status == 'lobby'
+        && request.resource.data.players.size() == 1
+        && request.resource.data.players[0].id == request.auth.uid;
+      allow update: if signedIn() && (
+        inRoom(resource.data.players, request.auth.uid)
+        || (resource.data.status == 'lobby'
+          && request.resource.data.status == 'lobby'
+          && request.resource.data.players.size() <= 4
+          && inRoom(request.resource.data.players, request.auth.uid)
+          && request.resource.data.players.hasAll(resource.data.players))
+      );
+      allow delete: if false;
+    }
+  }
+}
