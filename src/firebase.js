@@ -2,17 +2,11 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { newGame, passTurn, playTile } from './game';
+import { firebaseConfig, cloudReady } from './firebaseConfig';
 
-const config = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyB1r_jEyqXh5sZmmxh_znrIhRpc8-ZgblQ',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'funnn-c0f93.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'funnn-c0f93',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1041639511434:web:1b94e315c85fd4e4372473',
-};
-export const cloudReady = Object.values(config).every(Boolean);
 let db, auth, userPromise;
 if (cloudReady) {
-  const app = initializeApp(config);
+  const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   userPromise = signInAnonymously(auth);

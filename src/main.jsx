@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Crown, Dices, DoorOpen, Link2, LoaderCircle, Plus, RotateCcw, Send, Sparkles, Users, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
 import { newGame, passTurn, playTile, playableEnds } from './game';
+import { cloudReady } from './firebaseConfig';
 import './style.css';
 
 const RULES = [
@@ -12,7 +13,6 @@ const RULES = [
   ['End a round', 'A round ends when someone plays their last tile, or when nobody can play. The player who goes out scores the pips left in opponents’ hands. In a blocked round, the player with the fewest pips scores the difference. First to 100 wins.'],
   ['House rules', 'Five Tiles (Muggins / Five-Up) has friendly variations around the table. This version uses a double-six set, fives scoring, and a 100-point game. Doubles are placed crosswise in the classic game; this digital table keeps the chain tidy and easy to read on a phone.'],
 ];
-const CLOUD_READY = [import.meta.env.VITE_FIREBASE_API_KEY, import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, import.meta.env.VITE_FIREBASE_PROJECT_ID, import.meta.env.VITE_FIREBASE_APP_ID].every(Boolean);
 
 function Tile({ tile, onClick, selected = false, small = false, disabled = false, label }) {
   const [a,b] = tile;
@@ -69,11 +69,11 @@ function App() {
     finally { setBusy(false); }
   };
   const create = () => {
-    if (!CLOUD_READY) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
+    if (!cloudReady) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
     enterRoom(async () => (await import('./firebase')).createRoom(name));
   };
   const join = () => {
-    if (!CLOUD_READY) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
+    if (!cloudReady) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
     if (code.trim().length < 4) { setError('Enter the 5-letter invite code.'); return; }
     enterRoom(async () => (await import('./firebase')).joinRoom(code,name));
   };
@@ -122,7 +122,7 @@ function App() {
       <button className="primary-btn" onClick={create} disabled={busy}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Plus size={19}/>}</span>Create a table <ArrowRight size={18}/></button>
       <div className="divider"><span/>OR JOIN YOUR FRIENDS<span/></div><div className="join-row"><input className="code-input" aria-label="Invite code" placeholder="INVITE CODE" maxLength="5" value={code} onChange={(e)=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))} onKeyDown={(e)=>e.key==='Enter'&&join()} /><button className="join-btn" onClick={join} disabled={busy}>Join <ArrowRight size={17}/></button></div>
       <button className="practice-link" onClick={practice}><Dices size={16}/> Just looking? Play a practice table <ArrowRight size={15}/></button>
-      {!CLOUD_READY&&<div className="cloud-note"><WifiOff size={14}/> Friend invites will turn on after Firebase is connected.</div>}
+      {!cloudReady&&<div className="cloud-note"><WifiOff size={14}/> Friend invites will turn on after Firebase is connected.</div>}
       {error&&<p className="error-note" role="alert">{error}</p>}
     </section>
     <footer className="landing-footer"><span><Users size={15}/> 2–4 players</span><span className="footer-dot">·</span><span>About 15 min</span><button onClick={()=>setModal('rules')}><BookOpen size={15}/> How to play</button></footer>
