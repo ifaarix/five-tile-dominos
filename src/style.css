@@ -31,3 +31,36 @@
 @keyframes spinner-land{from{opacity:0;scale:.92}to{opacity:1;scale:1}}
 .open-ends{gap:6px;flex-wrap:wrap}.open-ends span{font-size:10px}
 @media(max-width:600px){.table-felt{min-height:315px;padding:12px}.spinner-board{min-width:350px;min-height:225px;grid-template-columns:minmax(95px,1fr) auto minmax(95px,1fr);gap:5px}.spinner-board .tile-small{width:49px;height:33px;flex-basis:49px}.spinner-center{min-width:72px}.open-ends{font-size:9px}}
+
+/* Keep the spinner's four arms in true domino proportions; rotating a wide
+   tile inside a fixed grid cell was making the vertical arms look pinched. */
+.spinner-board{grid-template-columns:minmax(76px,1fr) auto minmax(76px,1fr);gap:3px}
+.spinner-center{min-width:40px;min-height:58px}
+.spinner-arm{gap:2px;min-height:58px}
+.spinner-board .tile-small{width:58px;height:38px;flex-basis:58px;margin:0;padding:3px;border-radius:7px;transform:none;animation:spinner-land .2s ease both}
+.spinner-board .tile-small.tile-vertical{width:38px;height:58px;flex-basis:58px;flex-direction:column}
+.spinner-board .tile-small.tile-vertical-reverse{flex-direction:column-reverse}
+.spinner-board .tile-small.tile-horizontal-reverse{flex-direction:row-reverse}
+.spinner-center .tile-small.tile-vertical{flex-basis:38px}
+.spinner-board .tile-small .pip-face{width:43%;height:100%}
+.spinner-board .tile-small .pip{width:4px;height:4px}
+.spinner-board .tile-small .tile-rule{width:1px;height:80%}
+.spinner-board .tile-small.tile-vertical .pip-face,.spinner-board .tile-small.tile-vertical-reverse .pip-face{width:100%;height:43%}
+.spinner-board .tile-small.tile-vertical .tile-rule,.spinner-board .tile-small.tile-vertical-reverse .tile-rule{width:85%;height:1px}
+.spinner-center .tile-small{transform:none}
+.spinner-board .arm-0 .tile-small,.spinner-board .arm-2 .tile-small,.spinner-board .arm-3 .tile-small{transform:none}
+.arm-slot{width:58px;height:38px;border-radius:7px;background:#ffffff05}
+.arm-0 .arm-slot,.arm-2 .arm-slot{width:38px;height:58px}
+.tile .pip.on{background:#101a14;box-shadow:inset 0 0 0 .5px #26372b}
+.tile-small .pip.on{width:4.5px;height:4.5px}
+.hand-scroll{gap:5px;padding:18px 3px 16px;overflow-y:visible}
+.hand-scroll .tile{position:relative;border-width:1px;border-radius:10px;background:linear-gradient(145deg,#faf8ed,#e8e6d7);box-shadow:0 5px 12px #08110b55,0 1px 0 #fff9 inset}
+.hand-scroll .tile .pip.on{width:clamp(6px,1.55vw,8px);height:clamp(6px,1.55vw,8px)}
+.hand-scroll .tile-disabled{opacity:.54;filter:none}
+.hand-scroll .tile-selected{z-index:3;transform:translateY(-13px) scale(1.035)!important;border-color:var(--lime);box-shadow:0 0 0 2px #d5f27670,0 13px 24px #050b08a8,0 1px 0 #fff9 inset}
+.tile-target{z-index:4;background:linear-gradient(145deg,#f0ff9b,#d5f276)!important;border-color:#f5ffbe!important;color:#142013;opacity:1!important;filter:none!important;box-shadow:0 0 0 3px #d5f2763d,0 0 22px #d5f276a3,0 7px 16px #08110b70!important;cursor:pointer!important;animation:target-pulse 1.5s ease-in-out infinite!important}
+.tile-target .pip.on{background:#162116;box-shadow:inset 0 0 0 .5px #425033}
+.tile-target:hover{transform:scale(1.07);box-shadow:0 0 0 4px #d5f27666,0 0 25px #d5f276bd,0 8px 18px #08110b70!important}
+.end-chooser{min-height:29px;margin:-7px 0 5px;color:#dbe6c1;font-size:10px}
+@keyframes target-pulse{50%{box-shadow:0 0 0 4px #d5f27645,0 0 26px #d5f276a3,0 7px 16px #08110b70}}
+@media(max-width:600px){.spinner-board{grid-template-columns:minmax(70px,1fr) auto minmax(70px,1fr);min-height:230px;gap:3px}.spinner-center{min-width:40px}.spinner-center .tile-small.tile-vertical{flex-basis:37px}.spinner-board .tile-small{width:56px;height:37px;flex-basis:56px}.spinner-board .tile-small.tile-vertical,.spinner-board .tile-small.tile-vertical-reverse{width:37px;height:56px;flex-basis:56px}.spinner-board .tile-small .pip{width:4.5px;height:4.5px}}

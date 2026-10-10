@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Crown, Dices, DoorOpen, Link2, LoaderCircle, Plus, RotateCcw, Send, Sparkles, Users, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
-import { newGame, passTurn, playTile, playableEnds, boardTileCount, isSpinnerReady } from './game';
+import { newGame, passTurn, playTile, playableEnds, boardOpenPip, boardTileCount, isSpinnerReady } from './game';
 import { cloudReady } from './firebaseConfig';
 import './style.css';
 
@@ -28,23 +28,25 @@ function readableError(error) {
   return error?.message || 'Could not reach the party. Check your connection and try again.';
 }
 
-function Tile({ tile, onClick, selected = false, small = false, disabled = false, label }) {
+function Tile({ tile, onClick, selected = false, small = false, orientation = 'horizontal', target = false, disabled = false, label }) {
   const [a,b] = tile;
   const patterns = {0:[],1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
   const face = (n) => <span className="pip-face">{Array.from({length:9},(_,i)=><i key={i} className={patterns[n].includes(i)?'pip on':'pip'} />)}</span>;
-  return <button type="button" className={`tile ${small?'tile-small':''} ${selected?'tile-selected':''} ${disabled?'tile-disabled':''}`} onClick={onClick} disabled={disabled} aria-label={label || `${a} and ${b}`}>
+  return <button type="button" className={`tile ${small?'tile-small':''} ${small?`tile-${orientation}`:''} ${selected?'tile-selected':''} ${target?'tile-target':''} ${disabled?'tile-disabled':''}`} onClick={onClick} disabled={disabled} aria-pressed={selected} aria-label={label || `${a} and ${b}`}>
     {face(a)}<span className="tile-rule" />{face(b)}
   </button>;
 }
 
-function FourArmBoard({board, onRef}) {
+function FourArmBoard({board, onRef, selectedTile, legalEnds = [], onPlayEnd}) {
+  const orientations = ['vertical-reverse','horizontal','vertical','horizontal-reverse'];
   const arm = (tiles, index) => <div className={`spinner-arm arm-${index}`} key={index}>
-    {tiles.map((tile,i)=><Tile key={`${index}-${i}-${tile.join('')}`} tile={tile} small disabled/>)}
-    {!tiles.length&&<span className="arm-slot" aria-label="Open spinner side"/>}
+    {tiles.map((tile,i)=><Tile key={`${index}-${i}-${tile.join('')}`} tile={tile} small orientation={orientations[index]} disabled/>)}
+    {selectedTile && legalEnds.includes(index) && <Tile tile={selectedTile[0]===boardOpenPip(board,index)?selectedTile:[selectedTile[1],selectedTile[0]]} small orientation={orientations[index]} target onClick={()=>onPlayEnd(index)} label={`Place ${selectedTile[0]} and ${selectedTile[1]} on the ${['top','right','bottom','left'][index]} branch`}/>}
+    {!tiles.length&&!legalEnds.includes(index)&&<span className="arm-slot" aria-label="Open spinner side"/>}
   </div>;
   return <div className="board-scroll" ref={onRef} aria-label="Domino board, scroll to view all tiles">
     <div className="spinner-board">
-      {arm(board.arms[0],0)}<div className="spinner-center">{board.center?<Tile tile={board.center} small disabled/>:<div className="empty-board"><span>✳</span><strong>The board is yours</strong><small>Open with a double</small></div>}</div>{arm(board.arms[1],1)}{arm(board.arms[2],2)}{arm(board.arms[3],3)}
+      {arm(board.arms[0],0)}<div className="spinner-center">{board.center?<Tile tile={board.center} small orientation="vertical" disabled/>:<div className="empty-board"><span>✳</span><strong>The board is yours</strong><small>Open with a double</small></div>}</div>{arm(board.arms[1],1)}{arm(board.arms[2],2)}{arm(board.arms[3],3)}
     </div>
   </div>;
 }
@@ -58,6 +60,7 @@ function App() {
   const [error, setError] = useState('');
   const [modal, setModal] = useState('');
   const [picked, setPicked] = useState(null);
+  const [flipped, setFlipped] = useState(false);
   const [notice, setNotice] = useState('');
   const [copied, setCopied] = useState(false);
   const [demo, setDemo] = useState(false);
@@ -78,7 +81,7 @@ function App() {
     if (room?.board?.center) boardRef.current?.scrollTo({left: boardRef.current.scrollWidth/2, top: boardRef.current.scrollHeight/2, behavior:'smooth'});
   }, [room?.board?.center, room?.board?.arms?.map(a=>a.length).join(',')]);
   useEffect(() => { if (room?.status === 'finished') setModal('finished'); }, [room?.status]);
-  useEffect(() => { setPicked(null); }, [room?.turn]);
+  useEffect(() => { setPicked(null); setFlipped(false); }, [room?.turn]);
 
   const activePlayer = room?.players?.find((p) => p.id === room?.turn);
   const myTurn = !!room && (room.local ? room.status === 'playing' : room.turn === uid);
@@ -128,6 +131,17 @@ function App() {
       }
     } catch (e) { setError(readableError(e)); }
     finally { setBusy(false); }
+  };
+  const chooseTile = (index) => {
+    if (!myTurn || busy || !legalIndexes.has(index)) return;
+    if (opening) { doAction('play',index,null); return; }
+    if (picked === index) {
+      if (possibleEnds.length > 1) setFlipped((value) => !value);
+      else { setPicked(null); setFlipped(false); }
+    } else {
+      setPicked(index);
+      setFlipped(false);
+    }
   };
   const start = async () => {
     setBusy(true);setError('');try { await (await import('./firebase')).startRoom(room.code,uid); } catch(e) { setError(readableError(e)); } finally { setBusy(false); }
@@ -180,11 +194,11 @@ function App() {
     </section> : <section className="table-screen">
       <div className="table-topline"><span className="round-label"><span className="live-dot"/>{room.status==='finished'?'GAME OVER':'GAME TO 100'}</span><button className="share-mini" onClick={copyInvite}><Link2 size={15}/>{room.code}{copied&&<Check size={14}/>}</button></div>
       <div className="score-strip">{room.players?.map((p,i)=><div key={p.id} className={`score-player ${p.id===room.turn?'score-active':''}`}><span className={`player-orb orb-${i}`}>{p.name.slice(0,1).toUpperCase()}</span><div className="score-info"><span className="score-name">{p.name}{p.id===uid?' (you)':''}{p.id===room.players[0].id&&<Crown size={12}/>}</span><strong>{room.scores?.[p.id]||0}<small> pts</small></strong></div><span className="tile-count">{room.hands?.[p.id]?.length??0} <span>tiles</span></span></div>)}</div>
-      <div className="table-felt"><div className="felt-top"><span>ROUND {room.roundNumber||1} · {boardTileCount(room.board)} {boardTileCount(room.board)===1?'tile':'tiles'} played</span><span>{isSpinnerReady(room.board)?'ENDS SCORE IN FIVES':'FILL ALL FOUR SIDES TO START SCORING'}</span></div><FourArmBoard board={room.board} onRef={boardRef}/><div className="open-ends">{isSpinnerReady(room.board)?room.board.arms.map((a,i)=><span key={i}><i/>{a.at(-1)[1]} open</span>):<span>{room.board.center?'Fill the remaining sides of the double':'The opening double goes in the center'}</span>}</div></div>
+      <div className="table-felt"><div className="felt-top"><span>ROUND {room.roundNumber||1} · {boardTileCount(room.board)} {boardTileCount(room.board)===1?'tile':'tiles'} played</span><span>{isSpinnerReady(room.board)?'ENDS SCORE IN FIVES':'FILL ALL FOUR SIDES TO START SCORING'}</span></div><FourArmBoard board={room.board} onRef={boardRef} selectedTile={picked==null?null:(flipped?[hand[picked][1],hand[picked][0]]:hand[picked])} legalEnds={possibleEnds} onPlayEnd={(end)=>doAction('play',picked,end)}/><div className="open-ends">{isSpinnerReady(room.board)?room.board.arms.map((a,i)=><span key={i}><i/>{a.at(-1)[1]} open</span>):<span>{room.board.center?'Fill the remaining sides of the double':'The opening double goes in the center'}</span>}</div></div>
       <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins this party!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':opening?'No double — draw one; a non-double skips your turn':'No match — draw or pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
-      {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div><div className="hand-scroll" aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={`${tile.join('')}-${i}`} tile={tile} selected={picked===i} disabled={!myTurn||busy||!legalIndexes.has(i)} onClick={()=>{if(!myTurn||!legalIndexes.has(i))return;if(opening){doAction('play',i,null);return;}const ends=playableEnds([tile],room.board);if(ends.length===1)doAction('play',i,ends[0]);else setPicked(picked===i?null:i);}} label={`Play ${tile[0]} and ${tile[1]}`}/>)}</div>
-      {picked!=null&&possibleEnds.length>1&&<div className="end-chooser"><span>Choose a branch:</span>{possibleEnds.map((end)=><button key={end} onClick={()=>doAction('play',picked,end)}>{['TOP','RIGHT','BOTTOM','LEFT'][end]} ({room.board.arms[end].length?room.board.arms[end].at(-1)[1]:room.board.center[0]})</button>)}</div>}
-      <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{opening?(room.boneyard?.length?<><Dices size={16}/> Draw one (skip if not a double)</>:<><ArrowDownLeft size={16}/> Skip turn</>):room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text"><Sparkles size={14}/>{opening?'Tap an eligible double to open':'Tap a matching tile or branch to play'}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
+      {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div><div className="hand-scroll" aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={`${tile.join('')}-${i}`} tile={picked===i&&flipped?[tile[1],tile[0]]:tile} selected={picked===i} disabled={!myTurn||busy||!legalIndexes.has(i)} onClick={()=>chooseTile(i)} label={`Select ${tile[0]} and ${tile[1]} domino`}/>)}</div>
+      {picked!=null&&<div className="end-chooser"><span>{possibleEnds.length>1?(flipped?'Flipped · tap a yellow domino to place':'Tap the tile again to flip, or choose a yellow domino'):('Tap the yellow domino on the board to place')}</span></div>}
+      <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{opening?(room.boneyard?.length?<><Dices size={16}/> Draw one (skip if not a double)</>:<><ArrowDownLeft size={16}/> Skip turn</>):room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text"><Sparkles size={14}/>{opening?'Tap an eligible double to open':picked!=null?'Tap a yellow domino to place':'Tap a matching domino to select'}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
       {error&&<p className="error-note game-error" role="alert">{error}</p>}
     </section>}
     {notice&&<div className="toast"><Check size={16}/>{notice}</div>}
