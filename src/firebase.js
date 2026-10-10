@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { newGame, passTurn, playTile } from './game';
+import { emptyBoard, newGame, passTurn, playTile } from './game';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
 let db, auth, userPromise;
@@ -24,7 +24,7 @@ export async function createRoom(name) {
     const code = Math.random().toString(36).slice(2, 7).toUpperCase();
     const ref = roomRef(code);
     const player = { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() };
-    const state = { status: 'lobby', players: [player], hands: {}, board: [], scores: {}, turn: null, target: 100, createdAt: Date.now() };
+    const state = { status: 'lobby', players: [player], hands: {}, board: emptyBoard(), scores: {}, turn: null, target: 100, createdAt: Date.now() };
     const created = await runTransaction(db, async (tx) => {
       const existing = await tx.get(ref);
       if (existing.exists()) return false;

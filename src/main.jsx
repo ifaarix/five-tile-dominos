@@ -11,7 +11,7 @@ const RULES = [
   ['Fill the spinner', 'The opening double goes in the center. Fill all four sides with matching tiles before extending any side. Once all four sides are filled, play outward from any matching open end.'],
   ['Score fives', 'Scoring starts after the center double and all four sides are filled (five tiles total). Add the four exposed end pips; a multiple of 5 scores that many points.'],
   ['End a round', 'A round ends when someone plays their last tile, or when nobody can play. The player who goes out scores the pips left in opponents’ hands. In a blocked round, the player with the fewest pips scores the difference. First to 100 wins.'],
-  ['House rules', 'This table uses your four-sided opening spinner rule. Play to 100; when a round is blocked, the player with the fewest pips scores the difference and starts the next round.'],
+  ['House rules', 'This party uses your four-sided opening spinner rule. Play to 100; when a round is blocked, the player with the fewest pips scores the difference and starts the next round.'],
 ];
 
 function readableError(error) {
@@ -25,7 +25,7 @@ function readableError(error) {
   if (code === 'permission-denied' || code === 'firestore/permission-denied') {
     return 'Firestore denied access. Create the Firestore database and publish the app’s firestore.rules.';
   }
-  return error?.message || 'Could not reach the table. Check your connection and try again.';
+  return error?.message || 'Could not reach the party. Check your connection and try again.';
 }
 
 function Tile({ tile, onClick, selected = false, small = false, disabled = false, label }) {
@@ -42,9 +42,9 @@ function FourArmBoard({board, onRef}) {
     {tiles.map((tile,i)=><Tile key={`${index}-${i}-${tile.join('')}`} tile={tile} small disabled/>)}
     {!tiles.length&&<span className="arm-slot" aria-label="Open spinner side"/>}
   </div>;
-  return <div className="board-scroll" ref={onRef} aria-label="Domino table, scroll to view all tiles">
+  return <div className="board-scroll" ref={onRef} aria-label="Domino board, scroll to view all tiles">
     <div className="spinner-board">
-      {arm(board.arms[0],0)}<div className="spinner-center">{board.center?<Tile tile={board.center} small disabled/>:<div className="empty-board"><span>✳</span><strong>The table is yours</strong><small>Open with a double</small></div>}</div>{arm(board.arms[1],1)}{arm(board.arms[2],2)}{arm(board.arms[3],3)}
+      {arm(board.arms[0],0)}<div className="spinner-center">{board.center?<Tile tile={board.center} small disabled/>:<div className="empty-board"><span>✳</span><strong>The board is yours</strong><small>Open with a double</small></div>}</div>{arm(board.arms[1],1)}{arm(board.arms[2],2)}{arm(board.arms[3],3)}
     </div>
   </div>;
 }
@@ -93,17 +93,17 @@ function App() {
     try {
       const firebase = await import('./firebase');
       const result = await fn(firebase);
-      setUid(result.uid); setRoom({code:result.code, local:false}); location.hash = result.code;
+      setUid(result.uid); setRoom({code:result.code, local:false, status:'connecting'}); location.hash = result.code;
     }
     catch (e) { setError(readableError(e)); }
     finally { setBusy(false); }
   };
   const create = () => {
-    if (!cloudReady) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
+    if (!cloudReady) { setError('Online parties are not connected yet. Try a practice game, or connect Firebase to invite friends.'); return; }
     enterRoom((firebase) => firebase.createRoom(name));
   };
   const join = () => {
-    if (!cloudReady) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
+    if (!cloudReady) { setError('Online parties are not connected yet. Try a practice game, or connect Firebase to invite friends.'); return; }
     if (code.trim().length < 4) { setError('Enter the 5-letter invite code.'); return; }
     enterRoom((firebase) => firebase.joinRoom(code,name));
   };
@@ -138,21 +138,21 @@ function App() {
   };
   const shareInvite = async () => {
     const url = `${location.origin}${location.pathname}#${room.code}`;
-    if (navigator.share) { try { await navigator.share({title:'Join my Five Tiles table',text:`Pull up a chair — our code is ${room.code}`,url}); } catch {} }
+    if (navigator.share) { try { await navigator.share({title:'Join my Five Tiles party',text:`Pull up a chair — our party code is ${room.code}`,url}); } catch {} }
     else copyInvite();
   };
 
   if (!room) return <main className="landing">
     <div className="landing-glow glow-a"/><div className="landing-glow glow-b"/>
     <header className="topbar"><a className="brand" href="#" onClick={(e)=>e.preventDefault()}><span className="brand-mark"><span/><span/><span/><span/></span><span>five<span className="brand-light">tiles</span></span></a><button className="icon-btn top-help" onClick={()=>setModal('rules')} aria-label="How to play"><CircleHelp size={21}/></button></header>
-    <section className="hero"><div className="eyebrow"><span className="live-dot"/> THE TABLE IS OPEN</div><h1>Good friends.<br/>Good <em>dominoes.</em></h1><p className="hero-copy">A little strategy, a little luck, and the people you like best. Pull up a chair.</p>
+    <section className="hero"><div className="eyebrow"><span className="live-dot"/> THE PARTY IS OPEN</div><h1>Good friends.<br/>Good <em>dominoes.</em></h1><p className="hero-copy">A little strategy, a little luck, and the people you like best. Pull up a chair.</p>
       <div className="tile-stack" aria-hidden="true"><div className="stack-tile stack-back"><i/><i/><i/><i/></div><div className="stack-tile stack-middle"><i/><i/><i/><i/><i/></div><div className="stack-tile stack-front"><i/><i/><i/><i/><i/><i/></div><span className="spark spark-one">✳</span><span className="spark spark-two">✦</span></div>
     </section>
     <section className="entry-card" aria-label="Join or create a game">
       <label className="field-label" htmlFor="player-name">YOUR NAME</label><input id="player-name" className="name-input" placeholder="What should we call you?" maxLength="18" value={name} onChange={(e)=>setName(e.target.value)} onKeyDown={(e)=>e.key==='Enter'&&create()} autoComplete="nickname"/>
-      <button className="primary-btn" onClick={create} disabled={busy}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Plus size={19}/>}</span>Create a table <ArrowRight size={18}/></button>
-      <div className="divider"><span/>OR JOIN YOUR FRIENDS<span/></div><div className="join-row"><input className="code-input" aria-label="Invite code" placeholder="INVITE CODE" maxLength="5" value={code} onChange={(e)=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))} onKeyDown={(e)=>e.key==='Enter'&&join()} /><button className="join-btn" onClick={join} disabled={busy}>Join <ArrowRight size={17}/></button></div>
-      <button className="practice-link" onClick={practice}><Dices size={16}/> Just looking? Play a practice table <ArrowRight size={15}/></button>
+      <button className="primary-btn" onClick={create} disabled={busy}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Plus size={19}/>}</span>Create a party <ArrowRight size={18}/></button>
+      <div className="divider"><span/>OR JOIN YOUR FRIENDS<span/></div><div className="join-row"><input className="code-input" aria-label="Party invite code" placeholder="INVITE CODE" maxLength="5" value={code} onChange={(e)=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))} onKeyDown={(e)=>e.key==='Enter'&&join()} /><button className="join-btn" onClick={join} disabled={busy}>Join <ArrowRight size={17}/></button></div>
+      <button className="practice-link" onClick={practice}><Dices size={16}/> Just looking? Play a practice game <ArrowRight size={15}/></button>
       {!cloudReady&&<div className="cloud-note"><WifiOff size={14}/> Friend invites will turn on after Firebase is connected.</div>}
       {error&&<p className="error-note" role="alert">{error}</p>}
     </section>
@@ -160,6 +160,8 @@ function App() {
     <div className="version-note">A classic game, made for right now.</div>
     {modal==='rules'&&<RulesModal onClose={()=>setModal('')} expanded={expandedRule} setExpanded={setExpandedRule}/>}
   </main>;
+
+  if (room.status === 'connecting') return <main className="game-shell"><header className="game-header"><a className="brand game-brand" href="#" onClick={(e)=>e.preventDefault()}><span className="brand-mark"><span/><span/><span/><span/></span><span>five<span className="brand-light">tiles</span></span></a></header><section className="lobby-screen"><div className="eyebrow"><span className="live-dot"/> PARTY CREATED</div><div className="lobby-title"><h1>Opening your<br/>party…</h1><p>Getting everyone a seat.</p></div><span className="loader-line"><LoaderCircle className="spin" size={20}/> Connecting</span></section></main>;
 
   const myHand = room.local ? room.hands[room.turn] : room.hands?.[uid] || [];
   const opening = !room.board?.center;
@@ -169,17 +171,17 @@ function App() {
 
   return <main className="game-shell">
     <header className="game-header"><button className="back-btn" onClick={()=>setModal('leave')} aria-label="Back to home"><ArrowLeft size={19}/></button><a className="brand game-brand" href="#" onClick={(e)=>e.preventDefault()}><span className="brand-mark"><span/><span/><span/><span/></span><span>five<span className="brand-light">tiles</span></span></a><div className="header-actions"><button className="icon-btn" onClick={()=>setSound(!sound)} aria-label={sound?'Mute play feedback':'Enable play feedback'}>{sound?<Volume2 size={19}/>:<VolumeX size={19}/>}</button><button className="icon-btn" onClick={()=>setModal('rules')} aria-label="Rules"><BookOpen size={19}/></button></div></header>
-    {room.status==='lobby' ? <section className="lobby-screen"><div className="lobby-top"><span className="eyebrow"><span className="live-dot"/> WAITING FOR PLAYERS</span><span className="room-badge"><Users size={15}/>{room.players?.length||1} / 4</span></div><div className="lobby-title"><div className="overline">YOUR TABLE</div><h1>Invite your<br/>people over.</h1><p>Send the code. They’re just a tap away.</p></div>
-      <button className="invite-card" onClick={shareInvite}><span className="invite-caption">TABLE CODE</span><strong>{room.code}</strong><span className="invite-action"><Send size={17}/>{copied?'Copied!':'Share invite'}<ArrowRight size={16}/></span></button>
-      <div className="seats-heading"><span>AROUND THE TABLE</span><span>{Math.max(0,4-(room.players?.length||0))} seats open</span></div><div className="seat-grid">{[0,1,2,3].map((i)=>{const player=room.players?.[i];return <div key={i} className={`seat ${player?'seat-filled':''}`}><span className="seat-avatar">{player?player.name.slice(0,1).toUpperCase():<Plus size={17}/>}</span><span className="seat-name">{player?.name||'Waiting…'}</span>{player?.id===room.players?.[0]?.id&&<span className="host-tag">HOST</span>}</div>})}</div>
-      {demo&&<div className="setup-hint"><WifiOff size={17}/> Practice table is only on this device. Share a link after Firebase is connected.</div>}
+    {room.status==='lobby' ? <section className="lobby-screen"><div className="lobby-top"><span className="eyebrow"><span className="live-dot"/> PARTY IS OPEN</span><span className="room-badge"><Users size={15}/>{room.players?.length||1} / 4</span></div><div className="lobby-title"><div className="overline">YOUR PARTY</div><h1>Invite your<br/>people over.</h1><p>Send the code. They’re just a tap away.</p></div>
+      <button className="invite-card" onClick={shareInvite}><span className="invite-caption">PARTY CODE</span><strong>{room.code}</strong><span className="invite-action"><Send size={17}/>{copied?'Copied!':'Share invite'}<ArrowRight size={16}/></span></button>
+      <div className="seats-heading"><span>PARTY MEMBERS</span><span>{Math.max(0,4-(room.players?.length||0))} seats open</span></div><div className="seat-grid">{[0,1,2,3].map((i)=>{const player=room.players?.[i];return <div key={i} className={`seat ${player?'seat-filled':''}`}><span className="seat-avatar">{player?player.name.slice(0,1).toUpperCase():<Plus size={17}/>}</span><span className="seat-name">{player?.name||'Waiting…'}</span>{player?.id===room.players?.[0]?.id&&<span className="host-tag">HOST</span>}</div>})}</div>
+      {demo&&<div className="setup-hint"><WifiOff size={17}/> Practice game is only on this device. Share a link after Firebase is connected.</div>}
       <button className="primary-btn lobby-start" onClick={()=>demo?setRoom({...room,status:'playing'}):start()} disabled={busy||(!demo&&room.players?.length<2)}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Sparkles size={18}/>}</span>{room.players?.length<2&&!demo?'Waiting for a friend…':'Let’s play'}<ArrowRight size={18}/></button>
-      <button className="text-btn lobby-exit" onClick={backHome}>Leave this table</button>{error&&<p className="error-note" role="alert">{error}</p>}
+      <button className="text-btn lobby-exit" onClick={backHome}>Leave party</button>{error&&<p className="error-note" role="alert">{error}</p>}
     </section> : <section className="table-screen">
       <div className="table-topline"><span className="round-label"><span className="live-dot"/>{room.status==='finished'?'GAME OVER':'GAME TO 100'}</span><button className="share-mini" onClick={copyInvite}><Link2 size={15}/>{room.code}{copied&&<Check size={14}/>}</button></div>
       <div className="score-strip">{room.players?.map((p,i)=><div key={p.id} className={`score-player ${p.id===room.turn?'score-active':''}`}><span className={`player-orb orb-${i}`}>{p.name.slice(0,1).toUpperCase()}</span><div className="score-info"><span className="score-name">{p.name}{p.id===uid?' (you)':''}{p.id===room.players[0].id&&<Crown size={12}/>}</span><strong>{room.scores?.[p.id]||0}<small> pts</small></strong></div><span className="tile-count">{room.hands?.[p.id]?.length??0} <span>tiles</span></span></div>)}</div>
       <div className="table-felt"><div className="felt-top"><span>ROUND {room.roundNumber||1} · {boardTileCount(room.board)} {boardTileCount(room.board)===1?'tile':'tiles'} played</span><span>{isSpinnerReady(room.board)?'ENDS SCORE IN FIVES':'FILL ALL FOUR SIDES TO START SCORING'}</span></div><FourArmBoard board={room.board} onRef={boardRef}/><div className="open-ends">{isSpinnerReady(room.board)?room.board.arms.map((a,i)=><span key={i}><i/>{a.at(-1)[1]} open</span>):<span>{room.board.center?'Fill the remaining sides of the double':'The opening double goes in the center'}</span>}</div></div>
-      <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins the table!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':opening?'No double — draw one; a non-double skips your turn':'No match — draw or pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
+      <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins this party!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':opening?'No double — draw one; a non-double skips your turn':'No match — draw or pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
       {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div><div className="hand-scroll" aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={`${tile.join('')}-${i}`} tile={tile} selected={picked===i} disabled={!myTurn||busy||!legalIndexes.has(i)} onClick={()=>{if(!myTurn||!legalIndexes.has(i))return;if(opening){doAction('play',i,null);return;}const ends=playableEnds([tile],room.board);if(ends.length===1)doAction('play',i,ends[0]);else setPicked(picked===i?null:i);}} label={`Play ${tile[0]} and ${tile[1]}`}/>)}</div>
       {picked!=null&&possibleEnds.length>1&&<div className="end-chooser"><span>Choose a branch:</span>{possibleEnds.map((end)=><button key={end} onClick={()=>doAction('play',picked,end)}>{['TOP','RIGHT','BOTTOM','LEFT'][end]} ({room.board.arms[end].length?room.board.arms[end].at(-1)[1]:room.board.center[0]})</button>)}</div>}
       <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{opening?(room.boneyard?.length?<><Dices size={16}/> Draw one (skip if not a double)</>:<><ArrowDownLeft size={16}/> Skip turn</>):room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text"><Sparkles size={14}/>{opening?'Tap an eligible double to open':'Tap a matching tile or branch to play'}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
@@ -187,8 +189,8 @@ function App() {
     </section>}
     {notice&&<div className="toast"><Check size={16}/>{notice}</div>}
     {modal==='rules'&&<RulesModal onClose={()=>setModal('')} expanded={expandedRule} setExpanded={setExpandedRule}/>}
-    {modal==='leave'&&<div className="modal-scrim" onClick={()=>setModal('')}><div className="modal-card leave-card" onClick={(e)=>e.stopPropagation()}><button className="modal-close" onClick={()=>setModal('')}><X size={20}/></button><span className="modal-icon"><DoorOpen size={23}/></span><h2>Head home?</h2><p>{room.local?'This practice game will reset.':'You can come back with the table code.'}</p><button className="primary-btn" onClick={backHome}><span><ArrowLeft size={17}/></span>Leave table</button><button className="text-btn" onClick={()=>setModal('')}>Stay and play</button></div></div>}
-    {modal==='finished'&&<div className="modal-scrim"><div className="modal-card leave-card"><span className="modal-icon winner-icon"><Crown size={24}/></span><span className="eyebrow">THAT’S A WRAP</span><h2>{room.players.find(p=>p.id===room.winner)?.name} takes it!</h2><p>Good game. The next one’s yours.</p><button className="primary-btn" onClick={backHome}><span><RotateCcw size={17}/></span>Back to tables</button></div></div>}
+    {modal==='leave'&&<div className="modal-scrim" onClick={()=>setModal('')}><div className="modal-card leave-card" onClick={(e)=>e.stopPropagation()}><button className="modal-close" onClick={()=>setModal('')}><X size={20}/></button><span className="modal-icon"><DoorOpen size={23}/></span><h2>Head home?</h2><p>{room.local?'This practice game will reset.':'You can come back with the party code.'}</p><button className="primary-btn" onClick={backHome}><span><ArrowLeft size={17}/></span>Leave party</button><button className="text-btn" onClick={()=>setModal('')}>Stay and play</button></div></div>}
+    {modal==='finished'&&<div className="modal-scrim"><div className="modal-card leave-card"><span className="modal-icon winner-icon"><Crown size={24}/></span><span className="eyebrow">THAT’S A WRAP</span><h2>{room.players.find(p=>p.id===room.winner)?.name} takes it!</h2><p>Good game. The next one’s yours.</p><button className="primary-btn" onClick={backHome}><span><RotateCcw size={17}/></span>Back to parties</button></div></div>}
   </main>;
 }
 
