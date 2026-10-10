@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { emptyBoard, newGame, passTurn, playTile } from './game';
-import { decodeRoomState, encodeRoomState } from './roomStorage';
+import { decodeRoomState, encodeRoomState, roomFromFirestore } from './roomStorage';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
 let db, auth, userPromise;
@@ -17,7 +17,7 @@ if (cloudReady) {
 const currentUid = async () => (await userPromise).user.uid;
 const roomRef = (code) => doc(db, 'rooms', code);
 export function watchRoom(code, callback, onError) {
-  return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? decodeRoomState(snap.data()) : null), onError);
+  return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? roomFromFirestore(snap.id, snap.data()) : null), onError);
 }
 export async function createRoom(name) {
   const uid = await currentUid();
@@ -51,7 +51,7 @@ export async function joinRoom(codeInput, name) {
 export async function startRoom(code, uid) {
   await runTransaction(db, async (tx) => {
     const ref = roomRef(code), snap = await tx.get(ref), room = snap.data();
-    if (!room || room.players[0]?.id !== uid) throw new Error('Only the host can start this table.');
+    if (!room || room.players[0]?.id !== uid) throw new Error('Only the party host can start this game.');
     if (room.players.length < 2) throw new Error('Invite at least one friend first.');
     tx.set(ref, encodeRoomState({ ...newGame(room.players), updatedAt: serverTimestamp() }));
   });

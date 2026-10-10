@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyBoard, newGame } from './game.js';
-import { decodeRoomState, encodeRoomState } from './roomStorage.js';
+import { decodeRoomState, encodeRoomState, roomFromFirestore } from './roomStorage.js';
 
 function assertNoNestedArrays(value) {
   if (Array.isArray(value)) {
@@ -36,4 +36,12 @@ test('an unstarted party has a Firestore-safe empty spinner', () => {
 
 test('old empty-lobby board documents remain readable', () => {
   assert.deepEqual(decodeRoomState({ status: 'lobby', board: [] }).board, emptyBoard());
+});
+
+test('Firestore snapshots retain their document id as the party code', () => {
+  const room = roomFromFirestore('4LVHZ', { status: 'lobby', players: [{ id: 'host', name: 'Host' }], board: [] });
+
+  assert.equal(room.code, '4LVHZ');
+  assert.equal(room.players.length, 1);
+  assert.deepEqual(room.board, emptyBoard());
 });

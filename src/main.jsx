@@ -67,6 +67,7 @@ function App() {
   const [sound, setSound] = useState(false);
   const [expandedRule, setExpandedRule] = useState(0);
   const boardRef = useRef(null);
+  const preloadFirebase = () => { if (cloudReady) import('./firebase').catch(() => {}); };
 
   useEffect(() => {
     if (!room?.code || room.local) return;
@@ -84,6 +85,7 @@ function App() {
   useEffect(() => { setPicked(null); setFlipped(false); }, [room?.turn]);
 
   const activePlayer = room?.players?.find((p) => p.id === room?.turn);
+  const isHost = !!room && (room.local || room.players?.[0]?.id === uid);
   const myTurn = !!room && (room.local ? room.status === 'playing' : room.turn === uid);
   const handOwner = room?.local ? room.turn : uid;
   const hand = room?.hands?.[handOwner] || [];
@@ -163,9 +165,9 @@ function App() {
       <div className="tile-stack" aria-hidden="true"><div className="stack-tile stack-back"><i/><i/><i/><i/></div><div className="stack-tile stack-middle"><i/><i/><i/><i/><i/></div><div className="stack-tile stack-front"><i/><i/><i/><i/><i/><i/></div><span className="spark spark-one">✳</span><span className="spark spark-two">✦</span></div>
     </section>
     <section className="entry-card" aria-label="Join or create a game">
-      <label className="field-label" htmlFor="player-name">YOUR NAME</label><input id="player-name" className="name-input" placeholder="What should we call you?" maxLength="18" value={name} onChange={(e)=>setName(e.target.value)} onKeyDown={(e)=>e.key==='Enter'&&create()} autoComplete="nickname"/>
+      <label className="field-label" htmlFor="player-name">YOUR NAME</label><input id="player-name" className="name-input" placeholder="What should we call you?" maxLength="18" value={name} onFocus={preloadFirebase} onChange={(e)=>{setName(e.target.value);preloadFirebase();}} onKeyDown={(e)=>e.key==='Enter'&&create()} autoComplete="nickname"/>
       <button className="primary-btn" onClick={create} disabled={busy}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Plus size={19}/>}</span>Create a party <ArrowRight size={18}/></button>
-      <div className="divider"><span/>OR JOIN YOUR FRIENDS<span/></div><div className="join-row"><input className="code-input" aria-label="Party invite code" placeholder="INVITE CODE" maxLength="5" value={code} onChange={(e)=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))} onKeyDown={(e)=>e.key==='Enter'&&join()} /><button className="join-btn" onClick={join} disabled={busy}>Join <ArrowRight size={17}/></button></div>
+      <div className="divider"><span/>OR JOIN YOUR FRIENDS<span/></div><div className="join-row"><input className="code-input" aria-label="Party invite code" placeholder="INVITE CODE" maxLength="5" value={code} onFocus={preloadFirebase} onChange={(e)=>{setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''));preloadFirebase();}} onKeyDown={(e)=>e.key==='Enter'&&join()} /><button className="join-btn" onClick={join} disabled={busy}>Join <ArrowRight size={17}/></button></div>
       <button className="practice-link" onClick={practice}><Dices size={16}/> Just looking? Play a practice game <ArrowRight size={15}/></button>
       {!cloudReady&&<div className="cloud-note"><WifiOff size={14}/> Friend invites will turn on after Firebase is connected.</div>}
       {error&&<p className="error-note" role="alert">{error}</p>}
@@ -189,7 +191,7 @@ function App() {
       <button className="invite-card" onClick={shareInvite}><span className="invite-caption">PARTY CODE</span><strong>{room.code}</strong><span className="invite-action"><Send size={17}/>{copied?'Copied!':'Share invite'}<ArrowRight size={16}/></span></button>
       <div className="seats-heading"><span>PARTY MEMBERS</span><span>{Math.max(0,4-(room.players?.length||0))} seats open</span></div><div className="seat-grid">{[0,1,2,3].map((i)=>{const player=room.players?.[i];return <div key={i} className={`seat ${player?'seat-filled':''}`}><span className="seat-avatar">{player?player.name.slice(0,1).toUpperCase():<Plus size={17}/>}</span><span className="seat-name">{player?.name||'Waiting…'}</span>{player?.id===room.players?.[0]?.id&&<span className="host-tag">HOST</span>}</div>})}</div>
       {demo&&<div className="setup-hint"><WifiOff size={17}/> Practice game is only on this device. Share a link after Firebase is connected.</div>}
-      <button className="primary-btn lobby-start" onClick={()=>demo?setRoom({...room,status:'playing'}):start()} disabled={busy||(!demo&&room.players?.length<2)}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Sparkles size={18}/>}</span>{room.players?.length<2&&!demo?'Waiting for a friend…':'Let’s play'}<ArrowRight size={18}/></button>
+      <button className="primary-btn lobby-start" onClick={()=>demo?setRoom({...room,status:'playing'}):start()} disabled={busy||(!demo&&room.players?.length<2)||(!demo&&!isHost)}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Sparkles size={18}/>}</span>{!demo&&!isHost?'Waiting for the host…':room.players?.length<2&&!demo?'Waiting for a friend…':'Let’s play'}<ArrowRight size={18}/></button>
       <button className="text-btn lobby-exit" onClick={backHome}>Leave party</button>{error&&<p className="error-note" role="alert">{error}</p>}
     </section> : <section className="table-screen">
       <div className="table-topline"><span className="round-label"><span className="live-dot"/>{room.status==='finished'?'GAME OVER':'GAME TO 100'}</span><button className="share-mini" onClick={copyInvite}><Link2 size={15}/>{room.code}{copied&&<Check size={14}/>}</button></div>

@@ -43,3 +43,7 @@ export function decodeRoomState(state) {
   if (state.lastMove?.tile) decoded.lastMove = { ...state.lastMove, tile: unpackTile(state.lastMove.tile) };
   return decoded;
 }
+
+export function roomFromFirestore(id, state) {
+  return state ? { ...decodeRoomState(state), code: id } : null;
+}
