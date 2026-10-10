@@ -1,6 +1,6 @@
 # Five Tiles
 
-A phone-first Five Tiles / Five-Up / Muggins domino game. The landing page, rules, and pass-and-play practice table work without an account. Shared rooms use the configured Firebase project with Firebase Authentication (email/password accounts) and Cloud Firestore. The Firebase web app config is public client configuration embedded in the client; access is controlled by Firebase Authentication and the Firestore rules.
+A phone-first Five Tiles / Five-Up / Muggins domino game. Enter a name to create or join a shared table; Firebase Authentication signs players in anonymously in the background, and Cloud Firestore stores shared rooms. The landing page, rules, and pass-and-play practice table also work without a Firebase connection. Firebase web app config is public client configuration embedded in the client; access is controlled by Firebase Authentication and Firestore rules.
 
 ## Run locally
 
@@ -9,13 +9,13 @@ npm ci
 npm run dev
 ```
 
-To turn on shared invite rooms, enable **Authentication → Sign-in method → Email/Password**, create the default **Cloud Firestore** database if it does not exist, and publish the included `firestore.rules` in the `funnn-c0f93` Firebase project. The Firebase CLI configuration targets this project and declares the Email/Password provider in `firebase.json`; deploy with `npx -y firebase-tools@latest deploy --only auth,firestore:rules`. The project config is already in the app. Optional `VITE_FIREBASE_*` variables in `.env.local` can override it when developing against a different project. No Firebase service account or private key belongs in the browser app.
+To turn on shared invite rooms, enable **Authentication → Sign-in method → Anonymous**, create the default **Cloud Firestore** database if it does not exist, and publish the included `firestore.rules` in the `funnn-c0f93` Firebase project. The Firebase CLI configuration targets this project and enables anonymous sign-in while disabling email/password sign-in; deploy with `npx -y firebase-tools@latest deploy --only auth,firestore:rules`. The project config is already in the app. Optional `VITE_FIREBASE_*` variables in `.env.local` can override it when developing against a different project. No Firebase service account or private key belongs in the browser app.
 
 ## Host on GitHub Pages
 
 The included GitHub Actions workflow builds and publishes the static app to GitHub Pages whenever `main` changes. It enables Pages through the workflow. The app will be available at `https://ifaarix.github.io/five-tile-dominos/` after the first successful run. GitHub Actions runs the production build; Vercel and a separate web server are unnecessary.
 
-Email/password sign-up and sign-in happen in the app. The Firebase Console still needs Email/Password enabled, the default Cloud Firestore database created if needed, and the included rules published before multiplayer works. These Firebase web config values are public client configuration; Firestore rules and Firebase Authentication are the security boundary. Add `ifaarix.github.io` to Firebase Authentication's authorized domains.
+Players never need an email or password. The app creates an anonymous Firebase user when they create or join an online table, then uses that identity to enforce room membership. The Firebase Console still needs Anonymous enabled, the default Cloud Firestore database created if needed, and the included rules published before multiplayer works. These Firebase web config values are public client configuration; Firestore rules and Firebase Authentication are the security boundary. Add `ifaarix.github.io` to Firebase Authentication's authorized domains.
 
 ## Game notes
 

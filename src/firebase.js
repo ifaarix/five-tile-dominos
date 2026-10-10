@@ -1,27 +1,25 @@
 import { initializeApp } from 'firebase/app';
-import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { newGame, passTurn, playTile } from './game';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
-let db, auth;
+let db, auth, userPromise;
 if (cloudReady) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+  // Players only enter a display name. Firebase uses an anonymous identity
+  // behind the scenes so Firestore can enforce room membership.
+  userPromise = signInAnonymously(auth);
 }
-export async function authenticate(email, password, name, mode = 'create') {
-  const credential = mode === 'create'
-    ? await createUserWithEmailAndPassword(auth, email.trim(), password)
-    : await signInWithEmailAndPassword(auth, email.trim(), password);
-  if (mode === 'create' && name.trim()) await updateProfile(credential.user, { displayName: name.trim().slice(0, 18) });
-  return { uid: credential.user.uid, name: credential.user.displayName || name.trim() };
-}
+const currentUid = async () => (await userPromise).user.uid;
 const roomRef = (code) => doc(db, 'rooms', code);
 export function watchRoom(code, callback, onError) {
   return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? snap.data() : null), onError);
 }
-export async function createRoom(name, uid) {
+export async function createRoom(name) {
+  const uid = await currentUid();
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = Math.random().toString(36).slice(2, 7).toUpperCase();
     const ref = roomRef(code);
@@ -37,7 +35,8 @@ export async function createRoom(name, uid) {
   }
   throw new Error('Could not make a room code. Please try again.');
 }
-export async function joinRoom(codeInput, name, uid) {
+export async function joinRoom(codeInput, name) {
+  const uid = await currentUid();
   const code = codeInput.trim().toUpperCase();
   await runTransaction(db, async (tx) => {
     const ref = roomRef(code), snap = await tx.get(ref);

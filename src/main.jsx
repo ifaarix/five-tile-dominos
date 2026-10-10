@@ -16,23 +16,8 @@ const RULES = [
 
 function readableError(error) {
   const code = error?.code || '';
-  if (code === 'auth/configuration-not-found') {
-    return 'Firebase Authentication is not configured for this project. Enable Email/Password under Authentication → Sign-in method.';
-  }
-  if (code === 'auth/operation-not-allowed') {
-    return 'Email/Password sign-in is disabled in Firebase. Enable it under Authentication → Sign-in method.';
-  }
-  if (code === 'auth/email-already-in-use') {
-    return 'That email already has an account. Choose “Sign in” below the password field.';
-  }
-  if (code === 'auth/weak-password') {
-    return 'Use a password with at least 6 characters.';
-  }
-  if (code === 'auth/invalid-email') {
-    return 'Enter a valid email address.';
-  }
-  if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
-    return 'Email or password is incorrect. Check both and try again.';
+  if (code === 'auth/configuration-not-found' || code === 'auth/operation-not-allowed') {
+    return 'Firebase guest access is not enabled. Enable Authentication → Sign-in method → Anonymous for this project.';
   }
   if (code === 'auth/unauthorized-domain') {
     return 'Firebase is blocking this site. Add ifaarix.github.io under Authentication → Settings → Authorized domains.';
@@ -68,9 +53,6 @@ function App() {
   const [room, setRoom] = useState(null);
   const [uid, setUid] = useState(null);
   const [name, setName] = useState(localStorage.getItem('five-tiles-name') || '');
-  const [email, setEmail] = useState(localStorage.getItem('five-tiles-email') || '');
-  const [password, setPassword] = useState('');
-  const [authMode, setAuthMode] = useState('create');
   const [code, setCode] = useState(location.hash.slice(1).toUpperCase());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -107,26 +89,23 @@ function App() {
   const saveName = () => { const value = name.trim(); if (!value) { setError('Add your name to take a seat.'); return false; } localStorage.setItem('five-tiles-name',value); setName(value); setError(''); return true; };
   const enterRoom = async (fn) => {
     if (!saveName()) return;
-    if (!email.trim() || !password) { setError('Enter your email and password to continue.'); return; }
     setBusy(true); setError('');
     try {
       const firebase = await import('./firebase');
-      const account = await firebase.authenticate(email, password, name, authMode);
-      localStorage.setItem('five-tiles-email', email.trim());
-      const result = await fn(firebase, account.uid);
-      setUid(account.uid); setRoom({code:result.code, local:false}); location.hash = result.code;
+      const result = await fn(firebase);
+      setUid(result.uid); setRoom({code:result.code, local:false}); location.hash = result.code;
     }
     catch (e) { setError(readableError(e)); }
     finally { setBusy(false); }
   };
   const create = () => {
     if (!cloudReady) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
-    enterRoom((firebase, userId) => firebase.createRoom(name, userId));
+    enterRoom((firebase) => firebase.createRoom(name));
   };
   const join = () => {
     if (!cloudReady) { setError('Online tables are not connected yet. Try a practice table, or connect Firebase to invite friends.'); return; }
     if (code.trim().length < 4) { setError('Enter the 5-letter invite code.'); return; }
-    enterRoom((firebase, userId) => firebase.joinRoom(code,name,userId));
+    enterRoom((firebase) => firebase.joinRoom(code,name));
   };
   const practice = () => {
     if (!saveName()) return;
@@ -171,9 +150,6 @@ function App() {
     </section>
     <section className="entry-card" aria-label="Join or create a game">
       <label className="field-label" htmlFor="player-name">YOUR NAME</label><input id="player-name" className="name-input" placeholder="What should we call you?" maxLength="18" value={name} onChange={(e)=>setName(e.target.value)} onKeyDown={(e)=>e.key==='Enter'&&create()} autoComplete="nickname"/>
-      <label className="field-label" htmlFor="player-email">EMAIL</label><input id="player-email" className="name-input" type="email" placeholder="you@example.com" maxLength="254" value={email} onChange={(e)=>setEmail(e.target.value)} onKeyDown={(e)=>e.key==='Enter'&&create()} autoComplete="email" inputMode="email"/>
-      <label className="field-label" htmlFor="player-password">PASSWORD</label><input id="player-password" className="name-input" type="password" placeholder="At least 6 characters" value={password} onChange={(e)=>setPassword(e.target.value)} onKeyDown={(e)=>e.key==='Enter'&&create()} autoComplete={authMode==='create'?'new-password':'current-password'}/>
-      <div className="auth-mode"><span>{authMode==='create'?'Already have an account?':'New to Five Tiles?'}</span><button type="button" onClick={()=>{setAuthMode(authMode==='create'?'sign-in':'create');setError('');}}>{authMode==='create'?'Sign in':'Create an account'}</button></div>
       <button className="primary-btn" onClick={create} disabled={busy}><span>{busy?<LoaderCircle className="spin" size={19}/>:<Plus size={19}/>}</span>Create a table <ArrowRight size={18}/></button>
       <div className="divider"><span/>OR JOIN YOUR FRIENDS<span/></div><div className="join-row"><input className="code-input" aria-label="Invite code" placeholder="INVITE CODE" maxLength="5" value={code} onChange={(e)=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))} onKeyDown={(e)=>e.key==='Enter'&&join()} /><button className="join-btn" onClick={join} disabled={busy}>Join <ArrowRight size={17}/></button></div>
       <button className="practice-link" onClick={practice}><Dices size={16}/> Just looking? Play a practice table <ArrowRight size={15}/></button>
