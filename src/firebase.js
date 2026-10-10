@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { emptyBoard, newGame, passTurn, playTile } from './game';
+import { decodeRoomState, encodeRoomState } from './roomStorage';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
 let db, auth, userPromise;
@@ -16,7 +17,7 @@ if (cloudReady) {
 const currentUid = async () => (await userPromise).user.uid;
 const roomRef = (code) => doc(db, 'rooms', code);
 export function watchRoom(code, callback, onError) {
-  return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? snap.data() : null), onError);
+  return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? decodeRoomState(snap.data()) : null), onError);
 }
 export async function createRoom(name) {
   const uid = await currentUid();
@@ -28,7 +29,7 @@ export async function createRoom(name) {
     const created = await runTransaction(db, async (tx) => {
       const existing = await tx.get(ref);
       if (existing.exists()) return false;
-      tx.set(ref, { ...state, updatedAt: serverTimestamp() });
+      tx.set(ref, encodeRoomState({ ...state, updatedAt: serverTimestamp() }));
       return true;
     });
     if (created) return { code, uid };
@@ -52,14 +53,14 @@ export async function startRoom(code, uid) {
     const ref = roomRef(code), snap = await tx.get(ref), room = snap.data();
     if (!room || room.players[0]?.id !== uid) throw new Error('Only the host can start this table.');
     if (room.players.length < 2) throw new Error('Invite at least one friend first.');
-    tx.set(ref, { ...newGame(room.players), updatedAt: serverTimestamp() });
+    tx.set(ref, encodeRoomState({ ...newGame(room.players), updatedAt: serverTimestamp() }));
   });
 }
 export async function takeTurn(code, action, uid, tileIndex, end) {
   await runTransaction(db, async (tx) => {
-    const ref = roomRef(code), snap = await tx.get(ref), state = snap.data();
+    const ref = roomRef(code), snap = await tx.get(ref), state = decodeRoomState(snap.data());
     if (!state) throw new Error('This room has closed.');
     const next = action === 'pass' ? passTurn(state, uid) : playTile(state, uid, tileIndex, end);
-    tx.set(ref, { ...next, updatedAt: serverTimestamp() });
+    tx.set(ref, encodeRoomState({ ...next, updatedAt: serverTimestamp() }));
   });
 }
