@@ -17,3 +17,17 @@
 @media(prefers-reduced-motion:reduce){.tile-small{animation:none}}
 .cloud-note{display:flex;align-items:center;justify-content:center;gap:6px;margin:9px 0 0;color:#879184;font-size:9px}
 .cloud-note svg{color:#d7b96f}
+
+/* The opening spinner has four independent arms around its center double. */
+.table-felt{min-height:330px}
+.board-scroll{overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y;scrollbar-width:thin;scrollbar-color:#78905b transparent}
+.spinner-board{display:grid;grid-template-areas:". top ." "left center right" ". bottom .";grid-template-columns:minmax(110px,1fr) auto minmax(110px,1fr);grid-template-rows:auto auto auto;align-items:center;justify-items:center;gap:8px;min-width:390px;min-height:230px;width:100%;padding:10px 5px}
+.spinner-center{grid-area:center;display:flex;align-items:center;justify-content:center;min-width:84px;min-height:60px}
+.arm-0{grid-area:top;flex-direction:column-reverse}.arm-1{grid-area:right;flex-direction:row}.arm-2{grid-area:bottom;flex-direction:column}.arm-3{grid-area:left;flex-direction:row-reverse}
+.spinner-arm{display:flex;align-items:center;justify-content:center;min-width:100%;min-height:50px;gap:4px}.spinner-arm .tile-small{flex:none}.arm-slot{width:34px;height:25px;border:1px dashed #d8f18a66;border-radius:5px;display:block}
+.spinner-board .tile-small{width:55px;height:36px;flex-basis:55px;padding:3px;border-radius:6px;animation:spinner-land .2s ease both}.spinner-board .tile-small .pip-face{width:43%}.spinner-board .tile-small .pip{width:2.5px;height:2.5px}
+.spinner-center .tile-small{transform:rotate(90deg)}
+.spinner-board .arm-0 .tile-small,.spinner-board .arm-2 .tile-small{margin:8px 0}.spinner-board .arm-0 .tile-small{transform:rotate(-90deg)}.spinner-board .arm-2 .tile-small{transform:rotate(90deg)}.spinner-board .arm-3 .tile-small{transform:rotate(180deg)}
+@keyframes spinner-land{from{opacity:0;scale:.92}to{opacity:1;scale:1}}
+.open-ends{gap:6px;flex-wrap:wrap}.open-ends span{font-size:10px}
+@media(max-width:600px){.table-felt{min-height:315px;padding:12px}.spinner-board{min-width:350px;min-height:225px;grid-template-columns:minmax(95px,1fr) auto minmax(95px,1fr);gap:5px}.spinner-board .tile-small{width:49px;height:33px;flex-basis:49px}.spinner-center{min-width:72px}.open-ends{font-size:9px}}

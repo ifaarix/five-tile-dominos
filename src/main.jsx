@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Crown, Dices, DoorOpen, Link2, LoaderCircle, Plus, RotateCcw, Send, Sparkles, Users, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
-import { newGame, passTurn, playTile, playableEnds } from './game';
+import { newGame, passTurn, playTile, playableEnds, boardTileCount, isSpinnerReady } from './game';
 import { cloudReady } from './firebaseConfig';
 import './style.css';
 
 const RULES = [
   ['The goal', 'Be the first to reach 100 points. With two players, draw 7 dominoes each; with three or four, draw 5. The rest stay in the boneyard.'],
-  ['Start the chain', 'The player holding the highest double starts: double-six, then double-five, and so on. If no one has a double, shuffle and deal again.'],
-  ['Make a play', 'Match one end of a domino to either open end of the chain. Turn the tile around if you need to. If you can’t play, draw from the boneyard; if it’s empty, pass.'],
-  ['Score fives', 'After each play, add the pips showing on both open ends. When their total is a multiple of 5, score that many points. A total of 10 earns 10, a total of 5 earns 5.'],
+  ['Start a round', 'The first round starts with the highest double. In later rounds, the player who went out last starts and may play any double. If they have no double, they draw exactly one tile; if it is not a double, their turn is skipped.'],
+  ['Fill the spinner', 'The opening double goes in the center. Fill all four sides with matching tiles before extending any side. Once all four sides are filled, play outward from any matching open end.'],
+  ['Score fives', 'Scoring starts after the center double and all four sides are filled (five tiles total). Add the four exposed end pips; a multiple of 5 scores that many points.'],
   ['End a round', 'A round ends when someone plays their last tile, or when nobody can play. The player who goes out scores the pips left in opponents’ hands. In a blocked round, the player with the fewest pips scores the difference. First to 100 wins.'],
-  ['House rules', 'Five Tiles (Muggins / Five-Up) has friendly variations around the table. This version uses a double-six set, fives scoring, and a 100-point game. Doubles are placed crosswise in the classic game; this digital table keeps the chain tidy and easy to read on a phone.'],
+  ['House rules', 'This table uses your four-sided opening spinner rule. Play to 100; when a round is blocked, the player with the fewest pips scores the difference and starts the next round.'],
 ];
 
 function readableError(error) {
@@ -35,6 +35,18 @@ function Tile({ tile, onClick, selected = false, small = false, disabled = false
   return <button type="button" className={`tile ${small?'tile-small':''} ${selected?'tile-selected':''} ${disabled?'tile-disabled':''}`} onClick={onClick} disabled={disabled} aria-label={label || `${a} and ${b}`}>
     {face(a)}<span className="tile-rule" />{face(b)}
   </button>;
+}
+
+function FourArmBoard({board, onRef}) {
+  const arm = (tiles, index) => <div className={`spinner-arm arm-${index}`} key={index}>
+    {tiles.map((tile,i)=><Tile key={`${index}-${i}-${tile.join('')}`} tile={tile} small disabled/>)}
+    {!tiles.length&&<span className="arm-slot" aria-label="Open spinner side"/>}
+  </div>;
+  return <div className="board-scroll" ref={onRef} aria-label="Domino table, scroll to view all tiles">
+    <div className="spinner-board">
+      {arm(board.arms[0],0)}<div className="spinner-center">{board.center?<Tile tile={board.center} small disabled/>:<div className="empty-board"><span>✳</span><strong>The table is yours</strong><small>Open with a double</small></div>}</div>{arm(board.arms[1],1)}{arm(board.arms[2],2)}{arm(board.arms[3],3)}
+    </div>
+  </div>;
 }
 
 function App() {
@@ -63,8 +75,8 @@ function App() {
     return () => { stopped = true; unsub?.(); };
   }, [room?.code, room?.local]);
   useEffect(() => {
-    if (room?.board?.length) boardRef.current?.scrollTo({left: boardRef.current.scrollWidth, behavior:'smooth'});
-  }, [room?.board?.length]);
+    if (room?.board?.center) boardRef.current?.scrollTo({left: boardRef.current.scrollWidth/2, top: boardRef.current.scrollHeight/2, behavior:'smooth'});
+  }, [room?.board?.center, room?.board?.arms?.map(a=>a.length).join(',')]);
   useEffect(() => { if (room?.status === 'finished') setModal('finished'); }, [room?.status]);
   useEffect(() => { setPicked(null); }, [room?.turn]);
 
@@ -145,8 +157,10 @@ function App() {
   </main>;
 
   const myHand = room.local ? room.hands[room.turn] : room.hands?.[uid] || [];
-  const canPass = myTurn && room.status==='playing' && !playableEnds(myHand,room.board).length;
-  const legalIndexes = new Set(myHand.flatMap((t,i)=>(room.board.length?playableEnds([t],room.board).length:t[0]===room.openingDouble&&t[1]===room.openingDouble)?[i]:[]));
+  const opening = !room.board?.center;
+  const openingDoubleLegal = (tile) => tile[0]===tile[1] && (room.openingDouble==null || tile[0]===room.openingDouble);
+  const canPass = myTurn && room.status==='playing' && !(opening ? myHand.some(openingDoubleLegal) : playableEnds(myHand,room.board).length);
+  const legalIndexes = new Set(myHand.flatMap((t,i)=>(opening ? openingDoubleLegal(t) : playableEnds([t],room.board).length)?[i]:[]));
 
   return <main className="game-shell">
     <header className="game-header"><button className="back-btn" onClick={()=>setModal('leave')} aria-label="Back to home"><ArrowLeft size={19}/></button><a className="brand game-brand" href="#" onClick={(e)=>e.preventDefault()}><span className="brand-mark"><span/><span/><span/><span/></span><span>five<span className="brand-light">tiles</span></span></a><div className="header-actions"><button className="icon-btn" onClick={()=>setSound(!sound)} aria-label={sound?'Mute play feedback':'Enable play feedback'}>{sound?<Volume2 size={19}/>:<VolumeX size={19}/>}</button><button className="icon-btn" onClick={()=>setModal('rules')} aria-label="Rules"><BookOpen size={19}/></button></div></header>
@@ -159,11 +173,11 @@ function App() {
     </section> : <section className="table-screen">
       <div className="table-topline"><span className="round-label"><span className="live-dot"/>{room.status==='finished'?'GAME OVER':'GAME TO 100'}</span><button className="share-mini" onClick={copyInvite}><Link2 size={15}/>{room.code}{copied&&<Check size={14}/>}</button></div>
       <div className="score-strip">{room.players?.map((p,i)=><div key={p.id} className={`score-player ${p.id===room.turn?'score-active':''}`}><span className={`player-orb orb-${i}`}>{p.name.slice(0,1).toUpperCase()}</span><div className="score-info"><span className="score-name">{p.name}{p.id===uid?' (you)':''}{p.id===room.players[0].id&&<Crown size={12}/>}</span><strong>{room.scores?.[p.id]||0}<small> pts</small></strong></div><span className="tile-count">{room.hands?.[p.id]?.length??0} <span>tiles</span></span></div>)}</div>
-      <div className="table-felt"><div className="felt-top"><span>{room.board?.length?`${room.board.length} ${room.board.length===1?'tile':'tiles'} played`:'THE FIRST PLAY'}</span><span>ENDS SCORE IN FIVES</span></div><div className="board-scroll" ref={boardRef}><div className="board-chain">{room.board?.length?room.board.map((tile,i)=><React.Fragment key={tile.toSorted().join('')}><Tile tile={tile} small disabled/><span className="chain-seam"/></React.Fragment>):<div className="empty-board"><span>✳</span><strong>The table is yours</strong><small>{activePlayer?.name||'First player'} plays the highest double</small></div>}</div></div><div className="open-ends">{room.board?.length?<><span><i/>{room.board[0][0]} open</span><span>{room.board.at(-1)[1]} open<i/></span></>:<span>Double dominoes start the chain</span>}</div></div>
-      <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins the table!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':'No match — draw or pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
-      {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div><div className="hand-scroll" aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={`${tile.join('')}-${i}`} tile={tile} selected={picked===i} disabled={!myTurn||busy||(!legalIndexes.has(i)&&room.board.length>0)} onClick={()=>{if(!myTurn)return;if(!legalIndexes.has(i)&&room.board.length)return;if(!room.board.length){doAction('play',i,'start');return;}const ends=playableEnds([tile],room.board);if(ends.length===1)doAction('play',i,ends[0]);else setPicked(picked===i?null:i);}} label={`Play ${tile[0]} and ${tile[1]}`}/>)}</div>
-      {picked!=null&&possibleEnds.length>1&&<div className="end-chooser"><span>Which open end?</span><button onClick={()=>doAction('play',picked,'start')}><ArrowLeft size={16}/> LEFT ({room.board[0][0]})</button><button onClick={()=>doAction('play',picked,'end')}>RIGHT ({room.board.at(-1)[1]}) <ArrowRight size={16}/></button></div>}
-      <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text"><Sparkles size={14}/>{room.board.length?'Tap a matching tile to play':'Tap your highest double to open'}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
+      <div className="table-felt"><div className="felt-top"><span>ROUND {room.roundNumber||1} · {boardTileCount(room.board)} {boardTileCount(room.board)===1?'tile':'tiles'} played</span><span>{isSpinnerReady(room.board)?'ENDS SCORE IN FIVES':'FILL ALL FOUR SIDES TO START SCORING'}</span></div><FourArmBoard board={room.board} onRef={boardRef}/><div className="open-ends">{isSpinnerReady(room.board)?room.board.arms.map((a,i)=><span key={i}><i/>{a.at(-1)[1]} open</span>):<span>{room.board.center?'Fill the remaining sides of the double':'The opening double goes in the center'}</span>}</div></div>
+      <div className={`turn-callout ${myTurn?'your-turn':''}`}>{room.status==='finished'?<><Crown size={17}/>{room.players.find(p=>p.id===room.winner)?.name} wins the table!</>:myTurn?<><span className="turn-pulse"/>Your turn <span className="turn-sub">{legalIndexes.size?'Choose a tile to play':opening?'No double — draw one; a non-double skips your turn':'No match — draw or pass'}</span></>:<><span className="turn-pulse waiting"/>{activePlayer?.name||'A friend'} is playing<span className="turn-sub">Good things take a moment</span></>}</div>
+      {room.status==='playing'&&<><div className="hand-heading"><span>{myTurn?'YOUR TILES':`${activePlayer?.name?.toUpperCase()||'PLAYER'}’S TILES`}</span><span>{hand.length} left</span></div><div className="hand-scroll" aria-label="Your dominoes">{hand.map((tile,i)=><Tile key={`${tile.join('')}-${i}`} tile={tile} selected={picked===i} disabled={!myTurn||busy||!legalIndexes.has(i)} onClick={()=>{if(!myTurn||!legalIndexes.has(i))return;if(opening){doAction('play',i,null);return;}const ends=playableEnds([tile],room.board);if(ends.length===1)doAction('play',i,ends[0]);else setPicked(picked===i?null:i);}} label={`Play ${tile[0]} and ${tile[1]}`}/>)}</div>
+      {picked!=null&&possibleEnds.length>1&&<div className="end-chooser"><span>Choose a branch:</span>{possibleEnds.map((end)=><button key={end} onClick={()=>doAction('play',picked,end)}>{['TOP','RIGHT','BOTTOM','LEFT'][end]} ({room.board.arms[end].length?room.board.arms[end].at(-1)[1]:room.board.center[0]})</button>)}</div>}
+      <div className="table-controls">{canPass?<button className="pass-btn" onClick={()=>doAction('pass')}>{opening?(room.boneyard?.length?<><Dices size={16}/> Draw one (skip if not a double)</>:<><ArrowDownLeft size={16}/> Skip turn</>):room.boneyard?.length?<><Dices size={16}/> Draw a tile</>:<><ArrowDownLeft size={16}/> Pass turn</>}</button>:<span className="hint-text"><Sparkles size={14}/>{opening?'Tap an eligible double to open':'Tap a matching tile or branch to play'}</span>}<button className="rules-mini" onClick={()=>setModal('rules')}><BookOpen size={15}/> Rules</button></div></>}
       {error&&<p className="error-note game-error" role="alert">{error}</p>}
     </section>}
     {notice&&<div className="toast"><Check size={16}/>{notice}</div>}
