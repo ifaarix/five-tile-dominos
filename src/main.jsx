@@ -14,6 +14,20 @@ const RULES = [
   ['House rules', 'Five Tiles (Muggins / Five-Up) has friendly variations around the table. This version uses a double-six set, fives scoring, and a 100-point game. Doubles are placed crosswise in the classic game; this digital table keeps the chain tidy and easy to read on a phone.'],
 ];
 
+function readableError(error) {
+  const code = error?.code || '';
+  if (code === 'auth/configuration-not-found' || code === 'auth/operation-not-allowed') {
+    return 'Online play is not enabled for this Firebase project yet. In Firebase Console, enable Authentication → Sign-in method → Anonymous. Practice mode still works on this device.';
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return 'Firebase is blocking this site. Add ifaarix.github.io under Authentication → Settings → Authorized domains.';
+  }
+  if (code === 'permission-denied' || code === 'firestore/permission-denied') {
+    return 'Firestore denied access. Create the Firestore database and publish the app’s firestore.rules.';
+  }
+  return error?.message || 'Could not reach the table. Check your connection and try again.';
+}
+
 function Tile({ tile, onClick, selected = false, small = false, disabled = false, label }) {
   const [a,b] = tile;
   const patterns = {0:[],1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
@@ -44,8 +58,8 @@ function App() {
     let unsub;
     let stopped = false;
     import('./firebase').then(({watchRoom}) => {
-      if (!stopped) unsub = watchRoom(room.code, setRoom, (e) => setError(e.message || 'Lost connection to this table.'));
-    }).catch((e) => setError(e.message || 'Could not connect to this table.'));
+      if (!stopped) unsub = watchRoom(room.code, setRoom, (e) => setError(readableError(e)));
+    }).catch((e) => setError(readableError(e)));
     return () => { stopped = true; unsub?.(); };
   }, [room?.code, room?.local]);
   useEffect(() => {
@@ -65,7 +79,7 @@ function App() {
     if (!saveName()) return;
     setBusy(true); setError('');
     try { const result = await fn(); setUid(result.uid); setRoom({code:result.code, local:false}); location.hash = result.code; }
-    catch (e) { setError(e.message || 'Could not reach the table. Check the code and try again.'); }
+    catch (e) { setError(readableError(e)); }
     finally { setBusy(false); }
   };
   const create = () => {
@@ -96,11 +110,11 @@ function App() {
         if (navigator.vibrate) navigator.vibrate(14);
         try { const Audio = window.AudioContext || window.webkitAudioContext; if (Audio) { const context = new Audio(); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = 520; gain.gain.setValueAtTime(.035,context.currentTime); gain.gain.exponentialRampToValueAtTime(.001,context.currentTime+.045); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime+.05); oscillator.onended=()=>context.close(); } } catch {}
       }
-    } catch (e) { setError(e.message || 'That play didn’t go through.'); }
+    } catch (e) { setError(readableError(e)); }
     finally { setBusy(false); }
   };
   const start = async () => {
-    setBusy(true);setError('');try { await (await import('./firebase')).startRoom(room.code,uid); } catch(e) { setError(e.message); } finally { setBusy(false); }
+    setBusy(true);setError('');try { await (await import('./firebase')).startRoom(room.code,uid); } catch(e) { setError(readableError(e)); } finally { setBusy(false); }
   };
   const copyInvite = async () => {
     try { await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${room.code}`); setCopied(true); setTimeout(()=>setCopied(false),1800); }
