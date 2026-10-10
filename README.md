@@ -1,6 +1,6 @@
 # Five Tiles
 
-A phone-first Five Tiles / Five-Up / Muggins domino game. The landing page, rules, and pass-and-play practice table work without an account. Shared rooms use Firebase Authentication (anonymous sign-in) and Cloud Firestore.
+A phone-first Five Tiles / Five-Up / Muggins domino game. The landing page, rules, and pass-and-play practice table work without an account. Shared rooms use the configured Firebase project with Firebase Authentication (anonymous sign-in) and Cloud Firestore. The Firebase web app config is public client configuration embedded in the client; access is controlled by Firebase Authentication and the Firestore rules.
 
 ## Run locally
 
@@ -9,13 +9,13 @@ npm ci
 npm run dev
 ```
 
-To turn on shared invite rooms, copy `.env.example` to `.env.local` and fill in a Firebase web app's four config values. In Firebase, enable **Authentication → Sign-in method → Anonymous**, create a **Cloud Firestore** database, and publish the included `firestore.rules`. Then restart the dev server. No Firebase service account or private key belongs in the browser app.
+To turn on shared invite rooms, enable **Authentication → Sign-in method → Anonymous**, create a **Cloud Firestore** database, and publish the included `firestore.rules` in the `funnn-c0f93` Firebase project. The project config is already in the app. Optional `VITE_FIREBASE_*` variables in `.env.local` can override it when developing against a different project. No Firebase service account or private key belongs in the browser app.
 
 ## Host on GitHub Pages
 
-The included GitHub Actions workflow builds and publishes the static app to GitHub Pages whenever `main` changes. In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The app will be available at `https://ifaarix.github.io/five-tile-dominos/` after the first successful workflow. GitHub Actions runs the production build; Vercel and a separate web server are unnecessary.
+The included GitHub Actions workflow builds and publishes the static app to GitHub Pages whenever `main` changes. It enables Pages through the workflow. The app will be available at `https://ifaarix.github.io/five-tile-dominos/` after the first successful run. GitHub Actions runs the production build; Vercel and a separate web server are unnecessary.
 
-To turn on multiplayer, create a Firebase project, register a web app, enable **Authentication → Sign-in method → Anonymous**, and create the default Cloud Firestore database. Add the web app's `apiKey`, `authDomain`, `projectId`, and `appId` as repository variables named `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, and `VITE_FIREBASE_APP_ID` under **Settings → Secrets and variables → Actions → Variables**. These Firebase web config values are public client configuration; Firestore rules and anonymous auth are the security boundary. Publish the included rules (Firebase Console → Firestore → Rules, or `npx firebase-tools deploy --only firestore:rules` after selecting the project), and add `ifaarix.github.io` to Firebase Authentication's authorized domains. Then rerun the Pages workflow.
+To turn on multiplayer, enable anonymous authentication and create the default Cloud Firestore database in the configured Firebase project. These Firebase web config values are public client configuration; Firestore rules and anonymous auth are the security boundary. Publish the included rules (Firebase Console → Firestore → Rules, or `npx firebase-tools deploy --only firestore:rules` after selecting the project), and add `ifaarix.github.io` to Firebase Authentication's authorized domains. Then rerun the Pages workflow.
 
 ## Game notes
 
