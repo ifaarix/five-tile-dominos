@@ -47,3 +47,15 @@ export function decodeRoomState(state) {
 export function roomFromFirestore(id, state) {
   return state ? { ...decodeRoomState(state), code: id } : null;
 }
+
+export const isMember = (room, uid) => !!room?.players?.some((player) => player.id === uid);
+
+// Decide what joining a room should do. Existing members always get back in
+// (refresh, dropped tab, a full table, a game already under way); only new
+// players are limited to open lobby seats.
+export function planJoin(room, uid) {
+  if (!room) throw new Error('Room not found. Check the invite code.');
+  if (isMember(room, uid)) return 'rejoin';
+  if (room.status !== 'lobby' || room.players.length >= 4) throw new Error('This table is full or already playing.');
+  return 'add';
+}

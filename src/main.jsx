@@ -14,13 +14,28 @@ const RULES = [
   ['House rules', 'This party uses your four-sided opening spinner rule. Play to 100; when a round is blocked, the player with the fewest pips scores the difference and starts the next round.'],
 ];
 
+// localStorage can throw (private browsing, blocked site data), so never touch it directly.
+const ROOM_KEY = 'five-tiles-room';
+const store = {
+  get: (key) => { try { return localStorage.getItem(key); } catch { return null; } },
+  set: (key, value) => { try { localStorage.setItem(key, value); } catch {} },
+  remove: (key) => { try { localStorage.removeItem(key); } catch {} },
+};
+
 function readableError(error) {
   const code = error?.code || '';
-  if (code === 'auth/configuration-not-found' || code === 'auth/operation-not-allowed') {
+  // Firebase reports a disabled Anonymous provider as admin-restricted-operation.
+  if (code === 'auth/configuration-not-found' || code === 'auth/operation-not-allowed' || code === 'auth/admin-restricted-operation') {
     return 'Firebase guest access is not enabled. Enable Authentication → Sign-in method → Anonymous for this project.';
   }
   if (code === 'auth/unauthorized-domain') {
     return 'Firebase is blocking this site. Add ifaarix.github.io under Authentication → Settings → Authorized domains.';
+  }
+  if (code.includes('requests-from-referer') || code.includes('api-key-not-valid') || code === 'auth/invalid-api-key') {
+    return 'The Firebase API key is rejecting this site. In Google Cloud → APIs & Services → Credentials, allow https://ifaarix.github.io/* for the browser key.';
+  }
+  if (code === 'auth/network-request-failed' || code === 'unavailable') {
+    return 'Could not reach Firebase. Check your connection, and that a Cloud Firestore database exists for this project.';
   }
   if (code === 'permission-denied' || code === 'firestore/permission-denied') {
     return 'Firestore denied access. Create the Firestore database and publish the app’s firestore.rules.';
@@ -54,7 +69,7 @@ function FourArmBoard({board, onRef, selectedTile, legalEnds = [], onPlayEnd}) {
 function App() {
   const [room, setRoom] = useState(null);
   const [uid, setUid] = useState(null);
-  const [name, setName] = useState(localStorage.getItem('five-tiles-name') || '');
+  const [name, setName] = useState(store.get('five-tiles-name') || '');
   const [code, setCode] = useState(location.hash.slice(1).toUpperCase());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -67,17 +82,34 @@ function App() {
   const [sound, setSound] = useState(false);
   const [expandedRule, setExpandedRule] = useState(0);
   const boardRef = useRef(null);
+  const enteredRef = useRef(false);
   const preloadFirebase = () => { if (cloudReady) import('./firebase').catch(() => {}); };
+  // Back to the landing page with a clean slate: no leftover modal, saved party or invite hash.
+  const resetToHome = (message = '') => { setRoom(null); setUid(null); setDemo(false); setPicked(null); setFlipped(false); setModal(''); setError(message); store.remove(ROOM_KEY); location.hash = ''; };
+  // A failed connection while the party is still opening sends the player home with the reason.
+  const connectionFailed = (e) => { setError(readableError(e)); setRoom((current) => current?.status === 'connecting' ? null : current); };
 
   useEffect(() => {
     if (!room?.code || room.local) return;
     let unsub;
     let stopped = false;
     import('./firebase').then(({watchRoom}) => {
-      if (!stopped) unsub = watchRoom(room.code, setRoom, (e) => setError(readableError(e)));
-    }).catch((e) => setError(readableError(e)));
+      if (!stopped) unsub = watchRoom(room.code, (next) => next ? setRoom(next) : resetToHome('That party no longer exists.'), connectionFailed);
+    }).catch(connectionFailed);
     return () => { stopped = true; unsub?.(); };
   }, [room?.code, room?.local]);
+  // Reopen the party after a refresh, or when an invite link is opened by someone who is already seated.
+  useEffect(() => {
+    const target = (location.hash.slice(1) || store.get(ROOM_KEY) || '').toUpperCase();
+    if (!cloudReady || target.length < 4) return;
+    let cancelled = false;
+    import('./firebase').then(({resumeRoom}) => resumeRoom(target)).then((result) => {
+      if (cancelled || enteredRef.current || !result) return;
+      enteredRef.current = true;
+      setUid(result.uid); setRoom({code: result.code, local: false, status: 'connecting'}); location.hash = result.code;
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (room?.board?.center) boardRef.current?.scrollTo({left: boardRef.current.scrollWidth/2, top: boardRef.current.scrollHeight/2, behavior:'smooth'});
   }, [room?.board?.center, room?.board?.arms?.map(a=>a.length).join(',')]);
@@ -91,13 +123,15 @@ function App() {
   const hand = room?.hands?.[handOwner] || [];
   const possibleEnds = picked == null || !room ? [] : playableEnds([hand[picked]], room.board);
 
-  const saveName = () => { const value = name.trim(); if (!value) { setError('Add your name to take a seat.'); return false; } localStorage.setItem('five-tiles-name',value); setName(value); setError(''); return true; };
+  const saveName = () => { const value = name.trim(); if (!value) { setError('Add your name to take a seat.'); return false; } store.set('five-tiles-name',value); setName(value); setError(''); return true; };
   const enterRoom = async (fn) => {
     if (!saveName()) return;
+    enteredRef.current = true;
     setBusy(true); setError('');
     try {
       const firebase = await import('./firebase');
       const result = await fn(firebase);
+      store.set(ROOM_KEY, result.code);
       setUid(result.uid); setRoom({code:result.code, local:false, status:'connecting'}); location.hash = result.code;
     }
     catch (e) { setError(readableError(e)); }
@@ -114,17 +148,21 @@ function App() {
   };
   const practice = () => {
     if (!saveName()) return;
+    enteredRef.current = true;
     const players = [{id:'you',name:name.trim()},{id:'friend',name:'Your friend'}];
     const game = newGame(players);
     setUid('you'); setDemo(true); setError(''); setPicked(null); setModal('');
     setRoom({...game,code:'PRACTICE',local:true});
   };
-  const backHome = () => { setRoom(null); setUid(null); setDemo(false); setPicked(null); setError(''); location.hash=''; };
+  const backHome = () => resetToHome();
   const doAction = async (action, index, end) => {
     if (!room || busy) return;
     setBusy(true); setError('');
     try {
-      if (room.local) setRoom((state) => action==='pass'?passTurn(state,state.turn):playTile(state,state.turn,index,end));
+      if (room.local) {
+        // Work the move out first so an illegal one is caught below instead of crashing the render.
+        setRoom(action==='pass' ? passTurn(room, room.turn) : playTile(room, room.turn, index, end));
+      }
       else await (await import('./firebase')).takeTurn(room.code,action,uid,index,end);
       setPicked(null);
       if (action !== 'pass' && sound) {
@@ -177,7 +215,7 @@ function App() {
     {modal==='rules'&&<RulesModal onClose={()=>setModal('')} expanded={expandedRule} setExpanded={setExpandedRule}/>}
   </main>;
 
-  if (room.status === 'connecting') return <main className="game-shell"><header className="game-header"><a className="brand game-brand" href="#" onClick={(e)=>e.preventDefault()}><span className="brand-mark"><span/><span/><span/><span/></span><span>five<span className="brand-light">tiles</span></span></a></header><section className="lobby-screen"><div className="eyebrow"><span className="live-dot"/> PARTY CREATED</div><div className="lobby-title"><h1>Opening your<br/>party…</h1><p>Getting everyone a seat.</p></div><span className="loader-line"><LoaderCircle className="spin" size={20}/> Connecting</span></section></main>;
+  if (room.status === 'connecting') return <main className="game-shell"><header className="game-header"><a className="brand game-brand" href="#" onClick={(e)=>e.preventDefault()}><span className="brand-mark"><span/><span/><span/><span/></span><span>five<span className="brand-light">tiles</span></span></a></header><section className="lobby-screen"><div className="eyebrow"><span className="live-dot"/> PARTY CREATED</div><div className="lobby-title"><h1>Opening your<br/>party…</h1><p>Getting everyone a seat.</p></div><span className="loader-line"><LoaderCircle className="spin" size={20}/> Connecting</span><button className="text-btn lobby-exit" onClick={backHome}>Cancel</button></section></main>;
 
   const myHand = room.local ? room.hands[room.turn] : room.hands?.[uid] || [];
   const opening = !room.board?.center;

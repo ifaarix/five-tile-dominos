@@ -1,28 +1,36 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { emptyBoard, newGame, passTurn, playTile } from './game';
-import { decodeRoomState, encodeRoomState, roomFromFirestore } from './roomStorage';
+import { decodeRoomState, encodeRoomState, isMember, planJoin, roomFromFirestore } from './roomStorage';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
 let db, auth, userPromise;
+// Players only enter a display name. Firebase uses an anonymous identity
+// behind the scenes so Firestore can enforce room membership. A failed
+// sign-in is not cached, so the next action retries instead of staying broken.
+const ensureUser = () => {
+  if (!userPromise) userPromise = signInAnonymously(auth).catch((error) => { userPromise = null; throw error; });
+  return userPromise;
+};
 if (cloudReady) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-  // Players only enter a display name. Firebase uses an anonymous identity
-  // behind the scenes so Firestore can enforce room membership.
-  userPromise = signInAnonymously(auth);
+  ensureUser().catch(() => {}); // warm up; real actions retry and show the error
 }
-const currentUid = async () => (await userPromise).user.uid;
+const currentUid = async () => (await ensureUser()).user.uid;
 const roomRef = (code) => doc(db, 'rooms', code);
+// 32 unambiguous characters (no 0/O/1/I), so 5 random bytes always give a full 5-character code.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const makeCode = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join('');
 export function watchRoom(code, callback, onError) {
   return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? roomFromFirestore(snap.id, snap.data()) : null), onError);
 }
 export async function createRoom(name) {
   const uid = await currentUid();
   for (let attempt = 0; attempt < 5; attempt++) {
-    const code = Math.random().toString(36).slice(2, 7).toUpperCase();
+    const code = makeCode();
     const ref = roomRef(code);
     const player = { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() };
     const state = { status: 'lobby', players: [player], hands: {}, board: emptyBoard(), scores: {}, turn: null, target: 100, createdAt: Date.now() };
@@ -41,12 +49,18 @@ export async function joinRoom(codeInput, name) {
   const code = codeInput.trim().toUpperCase();
   await runTransaction(db, async (tx) => {
     const ref = roomRef(code), snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error('Room not found. Check the invite code.');
-    const state = snap.data();
-    if (state.status !== 'lobby' || state.players.length >= 4) throw new Error('This table is full or already playing.');
-    if (!state.players.some((p) => p.id === uid)) tx.update(ref, { players: [...state.players, { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() }] });
+    const state = snap.exists() ? snap.data() : null;
+    if (planJoin(state, uid) === 'add') tx.update(ref, { players: [...state.players, { id: uid, name: name.trim().slice(0, 18), joinedAt: Date.now() }] });
   });
   return { code, uid };
+}
+// Reopen a party this device is already seated in (page refresh, closed tab).
+// Returns null when the room is missing or this device is not a member.
+export async function resumeRoom(codeInput) {
+  const uid = await currentUid();
+  const code = codeInput.trim().toUpperCase();
+  const snap = await getDoc(roomRef(code));
+  return snap.exists() && isMember(snap.data(), uid) ? { code, uid } : null;
 }
 export async function startRoom(code, uid) {
   await runTransaction(db, async (tx) => {

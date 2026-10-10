@@ -81,6 +81,8 @@ function startNextRound(state, scores, leadPlayerId, lastMove) {
     return { ...state, scores, turn: winner, status: 'finished', winner, lastMove };
   }
   return {
+    // Keep fields the game model doesn't own (a practice game's `local`/`code`); newGame overrides every game field.
+    ...state,
     ...newGame(state.players, {
       leadPlayerId,
       roundNumber: state.roundNumber + 1,

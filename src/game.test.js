@@ -48,3 +48,20 @@ test('a later-round leader may open with any double',()=>{
   const next=playTile(state,'a',0);
   assert.deepEqual(next.board.center,[2,2]);
 });
+
+test('a new round keeps fields the game model does not own, such as a practice game\'s local flag', () => {
+  const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }];
+  const state = {
+    status: 'playing', players, hands: { a: [[6, 2]], b: [[1, 1]] }, boneyard: [],
+    board: { center: [6, 6], arms: [[], [], [], []] }, scores: { a: 0, b: 0 },
+    turn: 'a', roundStarter: 'a', roundNumber: 1, openingDouble: 6, lastMove: null, winner: null, target: 100,
+    local: true, code: 'PRACTICE',
+  };
+  const next = playTile(state, 'a', 0, 0);
+  assert.equal(next.roundNumber, 2);
+  assert.equal(next.status, 'playing');
+  assert.equal(next.local, true);
+  assert.equal(next.code, 'PRACTICE');
+  assert.equal(next.scores.a, 2);
+  assert.equal(next.turn, 'a');
+});

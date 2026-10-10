@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyBoard, newGame } from './game.js';
-import { decodeRoomState, encodeRoomState, roomFromFirestore } from './roomStorage.js';
+import { decodeRoomState, encodeRoomState, isMember, planJoin, roomFromFirestore } from './roomStorage.js';
 
 function assertNoNestedArrays(value) {
   if (Array.isArray(value)) {
@@ -44,4 +44,21 @@ test('Firestore snapshots retain their document id as the party code', () => {
   assert.equal(room.code, '4LVHZ');
   assert.equal(room.players.length, 1);
   assert.deepEqual(room.board, emptyBoard());
+});
+
+test('existing members can rejoin a table that is full or already playing', () => {
+  const players = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id.toUpperCase() }));
+  assert.equal(planJoin({ status: 'playing', players }, 'c'), 'rejoin');
+  assert.equal(planJoin({ status: 'lobby', players }, 'a'), 'rejoin');
+});
+
+test('new players only get an open seat in a lobby', () => {
+  const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }];
+  assert.equal(planJoin({ status: 'lobby', players }, 'z'), 'add');
+  assert.throws(() => planJoin({ status: 'playing', players }, 'z'), /full or already playing/);
+  const full = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id }));
+  assert.throws(() => planJoin({ status: 'lobby', players: full }, 'z'), /full or already playing/);
+  assert.throws(() => planJoin(null, 'z'), /Room not found/);
+  assert.equal(isMember({ players }, 'b'), true);
+  assert.equal(isMember({ players }, 'z'), false);
 });
