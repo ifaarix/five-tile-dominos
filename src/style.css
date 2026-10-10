@@ -17,6 +17,7 @@
 @media(prefers-reduced-motion:reduce){.tile-small{animation:none}}
 .cloud-note{display:flex;align-items:center;justify-content:center;gap:6px;margin:9px 0 0;color:#879184;font-size:9px}
 .cloud-note svg{color:#d7b96f}
+.auth-mode{display:flex;justify-content:center;align-items:center;gap:5px;margin:1px 0 13px;color:#90998c;font-size:10px}.auth-mode button{border:0;background:transparent;color:var(--lime);font:inherit;font-weight:700;padding:4px}
 
 /* The opening spinner has four independent arms around its center double. */
 .table-felt{min-height:330px}

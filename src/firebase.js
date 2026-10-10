@@ -1,23 +1,27 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { newGame, passTurn, playTile } from './game';
 import { firebaseConfig, cloudReady } from './firebaseConfig';
 
-let db, auth, userPromise;
+let db, auth;
 if (cloudReady) {
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-  userPromise = signInAnonymously(auth);
 }
-export const currentUid = async () => (await userPromise)?.user.uid;
+export async function authenticate(email, password, name, mode = 'create') {
+  const credential = mode === 'create'
+    ? await createUserWithEmailAndPassword(auth, email.trim(), password)
+    : await signInWithEmailAndPassword(auth, email.trim(), password);
+  if (mode === 'create' && name.trim()) await updateProfile(credential.user, { displayName: name.trim().slice(0, 18) });
+  return { uid: credential.user.uid, name: credential.user.displayName || name.trim() };
+}
 const roomRef = (code) => doc(db, 'rooms', code);
 export function watchRoom(code, callback, onError) {
   return onSnapshot(roomRef(code), (snap) => callback(snap.exists() ? snap.data() : null), onError);
 }
-export async function createRoom(name) {
-  const uid = await currentUid();
+export async function createRoom(name, uid) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = Math.random().toString(36).slice(2, 7).toUpperCase();
     const ref = roomRef(code);
@@ -33,8 +37,8 @@ export async function createRoom(name) {
   }
   throw new Error('Could not make a room code. Please try again.');
 }
-export async function joinRoom(codeInput, name) {
-  const uid = await currentUid(), code = codeInput.trim().toUpperCase();
+export async function joinRoom(codeInput, name, uid) {
+  const code = codeInput.trim().toUpperCase();
   await runTransaction(db, async (tx) => {
     const ref = roomRef(code), snap = await tx.get(ref);
     if (!snap.exists()) throw new Error('Room not found. Check the invite code.');
