@@ -60,16 +60,25 @@ test('a drawn opening double keeps the opening turn',()=>{
   assert.equal(next.turn,'a');
 });
 
-test('a stuck player draws once, then the turn moves on even if the new tile fits',()=>{
+test('a stuck player draws once; a drawn tile that fits must be played, otherwise the turn is skipped',()=>{
   const board={center:[6,6],arms:[[[6,5]],[[6,4]],[[6,3]],[[6,2]]]};
-  const state=fixture({board,hands:{a:[[0,0]],b:[[1,1]]},boneyard:[[2,2],[3,3]],openingDouble:null});
-  const next=passTurn(state,'a');
-  assert.equal(next.hands.a.length,2);
-  assert.equal(next.boneyard.length,1);
-  assert.equal(next.turn,'b');
-  assert.equal(next.lastMove.drew,true);
-  assert.deepEqual(playableEnds(next.hands.a,next.board),[3]); // the drawn 2 fits, but it is b's turn now
-  assert.throws(()=>passTurn(next,'a'),/not your turn/);
+  // tips are 5, 4, 3, 2 -> a drawn [2,2] fits, a drawn [1,1] does not
+  const fits=fixture({board,hands:{a:[[0,0]],b:[[1,0]]},boneyard:[[2,2],[1,1]],openingDouble:null});
+  const afterFit=passTurn(fits,'a');
+  assert.equal(afterFit.hands.a.length,2);
+  assert.equal(afterFit.boneyard.length,1);
+  assert.equal(afterFit.turn,'a');            // keeps the turn to play the new tile
+  assert.equal(afterFit.lastMove.canPlay,true);
+  assert.throws(()=>passTurn(afterFit,'a'),/playable/); // and may not draw a second time
+  const played=playTile(afterFit,'a',1,3);
+  assert.equal(played.turn,'b');
+
+  const misses=fixture({board,hands:{a:[[0,0]],b:[[1,0]]},boneyard:[[1,1],[2,2]],openingDouble:null});
+  const afterMiss=passTurn(misses,'a');
+  assert.equal(afterMiss.hands.a.length,2);
+  assert.equal(afterMiss.turn,'b');           // skipped: the play goes to the next player
+  assert.equal(afterMiss.lastMove.skipped,true);
+  assert.equal(afterMiss.boneyard.length,1);  // only one tile was taken
 });
 
 test('you cannot draw while you hold a playable tile',()=>{

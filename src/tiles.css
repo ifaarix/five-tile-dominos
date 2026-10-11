@@ -7,6 +7,7 @@
    aspect-ratio or per-breakpoint tile sizes, so a phone, a laptop and a
    resized window all draw identical dominoes, just at different --u.
    ------------------------------------------------------------------ */
+@property --bu{syntax:'<length>';inherits:true;initial-value:36px}
 :root{--u:40px;--hl:#ffd23f}
 
 .tile,.slot,.ghost{box-sizing:border-box;flex:none;display:flex;width:calc(var(--u)*2);height:var(--u);margin:0;padding:0;border:0;border-radius:calc(var(--u)*.17)}
@@ -52,6 +53,7 @@
 .table-felt::before{content:'';position:absolute;inset:8px;border:1px solid #d6edc81c;border-radius:11px;pointer-events:none}
 .board-scroll{position:absolute;inset:30px 0 28px;display:grid;overflow:auto;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .board-scroll::-webkit-scrollbar{display:none}
+.board-scroll.zooming{transition:--bu .32s cubic-bezier(.3,.7,.3,1)}
 
 /* The cross: arms are packed against the centre double, so tiles sit close together
    and a long arm on one side never pushes the other arms away. */
@@ -81,11 +83,18 @@
 
 /* ---- Moving tiles ---- */
 .fly-tile{position:fixed;z-index:60;margin:0;pointer-events:none;will-change:transform;box-shadow:inset 0 calc(var(--u)*.04) 0 #fff,0 calc(var(--u)*.3) calc(var(--u)*.5) rgba(0,0,0,.45),0 0 0 1px rgba(70,50,15,.4)}
+.land-ring{position:fixed;z-index:59;box-sizing:border-box;pointer-events:none;border:2px solid var(--hl);border-radius:calc(var(--u)*.2);box-shadow:0 0 14px rgba(255,210,63,.55)}
+.felt-note{position:absolute;z-index:6;left:50%;bottom:36px;display:flex;align-items:center;gap:8px;max-width:calc(100% - 28px);padding:8px 12px;border-radius:10px;background:#10241be8;border:1px solid rgba(255,255,255,.14);color:#eef3e6;font:600 12px/1.35 'DM Sans',sans-serif;pointer-events:none;transform:translateX(-50%);animation:note-in .2s ease-out both}
+.felt-note svg{flex:none;color:var(--lime)}
+@keyframes note-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 .gain-pop{position:absolute;z-index:5;left:50%;top:36px;display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;background:#10241b;border:1px solid rgba(255,210,63,.6);color:var(--hl);font:700 13px 'DM Sans',sans-serif;white-space:nowrap;pointer-events:none;transform:translateX(-50%);animation:gain-pop 1.25s ease-out both}
 .gain-pop b{font:700 17px var(--mono)}
 @keyframes gain-pop{0%{opacity:0;transform:translate(-50%,10px) scale(.85)}14%{opacity:1;transform:translate(-50%,0) scale(1.06)}24%{transform:translate(-50%,0) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-14px)}}
 
 /* ---- Below the board ---- */
+.end-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.end-chooser .end-chips button{height:30px;padding:0 12px;font:700 13px var(--mono)}
+.end-chooser .flip-btn{margin-left:auto}
 .end-chooser{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;color:#cdd3c5;font-size:11px;line-height:1.4}
 .end-chooser button{flex:none;display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid rgba(255,210,63,.5);border-radius:7px;background:rgba(255,210,63,.1);color:var(--hl);font:600 11px 'DM Sans',sans-serif;cursor:pointer}
 

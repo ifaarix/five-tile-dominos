@@ -179,16 +179,16 @@ export function passTurn(state, playerId) {
   }
 
   if (playableEnds(hand, state.board).length) throw new Error('You have a playable tile.');
-  // One draw per turn: take a tile from the boneyard, then the turn moves on
-  // (even if the new tile happens to fit).
+  // One draw per turn. If the drawn tile fits, the same player plays it; if not, the turn is skipped.
   if (state.boneyard.length) {
     const [tile, ...boneyard] = state.boneyard;
+    const fits = playableEnds([tile], state.board).length > 0;
     return {
       ...state,
       boneyard,
       hands: { ...state.hands, [playerId]: [...hand, tile] },
-      turn: nextPlayerId(state.players, playerId),
-      lastMove: { playerId, drew: true, tile, at: Date.now() },
+      turn: fits ? playerId : nextPlayerId(state.players, playerId),
+      lastMove: { playerId, drew: true, tile, canPlay: fits, skipped: !fits, at: Date.now() },
     };
   }
 
